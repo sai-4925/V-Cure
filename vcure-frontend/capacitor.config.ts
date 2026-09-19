@@ -14,7 +14,7 @@ const config: CapacitorConfig = {
   appName: 'V-Cure',
   webDir: 'out',
   server: {
-    url: process.env.CAPACITOR_SERVER_URL || 'https://v-cure-health.vercel.app',
+    url: process.env.CAPACITOR_SERVER_URL || 'https://v-cure.vercel.app',
     cleartext: false
   },
   plugins: {

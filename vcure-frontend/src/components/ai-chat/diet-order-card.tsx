@@ -235,13 +235,16 @@ export function DietOrderCard({ dietOrder }: DietOrderCardProps) {
       {/* Direct Order Modal */}
       {isCheckoutOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4 backdrop-blur-2xs transition-all"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 backdrop-blur-xs transition-all"
           role="dialog"
           aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsCheckoutOpen(false);
+          }}
         >
-          <div className="w-full max-w-md rounded-t-3xl sm:rounded-3xl bg-white p-5 shadow-2xl animate-in slide-in-from-bottom-5">
+          <div className="w-full max-w-md max-h-[90dvh] sm:max-h-[85vh] rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl animate-in slide-in-from-bottom-5 flex flex-col overflow-hidden">
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 pt-4 pb-3 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
                   <ShoppingBag className="h-4 w-4" />
@@ -257,8 +260,8 @@ export function DietOrderCard({ dietOrder }: DietOrderCardProps) {
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="mt-4 space-y-3.5 text-xs">
+            {/* Modal Body - Scrollable */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3.5 text-xs overscroll-contain">
               {/* Delivery Address */}
               <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-3">
                 <div className="flex items-center justify-between text-gray-500 font-medium mb-1">
@@ -285,7 +288,7 @@ export function DietOrderCard({ dietOrder }: DietOrderCardProps) {
                 <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400">
                   Items to be delivered ({selectedItems.length})
                 </span>
-                <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
                   {selectedItems.map((item) => (
                     <div
                       key={item.id}
@@ -338,8 +341,8 @@ export function DietOrderCard({ dietOrder }: DietOrderCardProps) {
               </div>
             </div>
 
-            {/* Modal Actions */}
-            <div className="mt-5 flex gap-2">
+            {/* Modal Actions - Pinned Sticky at the Bottom */}
+            <div className="shrink-0 border-t border-gray-100 bg-white px-5 py-3.5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] flex gap-2">
               <button
                 type="button"
                 onClick={() => setIsCheckoutOpen(false)}

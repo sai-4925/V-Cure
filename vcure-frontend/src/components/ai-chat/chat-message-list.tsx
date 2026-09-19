@@ -6,17 +6,20 @@ import { UserMessage } from "@/components/ai-chat/user-message";
 import { AiResponseMessage } from "@/components/ai-chat/ai-response-message";
 import { TypingIndicator } from "@/components/ai-chat/typing-indicator";
 import type { ChatMessage } from "@/types/ai-chat";
+import type { FollowUpAnswer } from "@/lib/ai-chat-adapter/types";
 
 export function ChatMessageList({
   messages,
   isStreaming,
   streamingText,
-  onRetry
+  onRetry,
+  onFollowUpSubmit
 }: {
   messages: ChatMessage[];
   isStreaming: boolean;
   streamingText: string | null;
   onRetry?: () => void;
+  onFollowUpSubmit?: (answers: FollowUpAnswer[]) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -41,7 +44,13 @@ export function ChatMessageList({
         message.role === "user" ? (
           <UserMessage key={message.id} message={message} />
         ) : (
-          <AiResponseMessage key={message.id} message={message} onRetry={onRetry} />
+          <AiResponseMessage
+            key={message.id}
+            message={message}
+            onRetry={onRetry}
+            onFollowUpSubmit={onFollowUpSubmit}
+            isFollowUpDisabled={isStreaming}
+          />
         )
       )}
 

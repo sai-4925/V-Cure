@@ -15,6 +15,44 @@ export interface SourceReference {
   type: "article" | "medical_profile" | "meal_plan";
 }
 
+export interface FollowUpQuestionOption {
+  label: string;
+  value: string;
+}
+
+export interface FollowUpQuestionItem {
+  id: string;
+  label: string;
+  description?: string;
+  options?: (string | FollowUpQuestionOption)[];
+  unit?: string;
+  placeholder?: string;
+}
+
+export interface FollowUpQuestionConfig {
+  questions: (string | FollowUpQuestionItem)[];
+  required: string[];
+}
+
+export interface RecommendedDietItem {
+  id: string;
+  name: string;
+  quantity: string;
+  estimatedPriceInr: number;
+  category?: string;
+  unit?: string;
+}
+
+export interface DietOrderRecommendation {
+  id: string;
+  title: string;
+  description?: string;
+  items: RecommendedDietItem[];
+  totalPriceInr: number;
+  allergySafeNotice?: string;
+  excludedAllergens?: string[];
+}
+
 export interface ChatMessage {
   id: string;
   role: ChatRole;
@@ -23,6 +61,8 @@ export interface ChatMessage {
   createdAt: string;
   safetyWarning?: SafetyWarning;
   sources?: SourceReference[];
+  followUp?: FollowUpQuestionConfig;
+  dietOrder?: DietOrderRecommendation;
 }
 
 export interface Conversation {

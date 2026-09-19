@@ -107,11 +107,28 @@ The compiled APK will be generated at:
 
 ---
 
-## 🌐 Production Environment Configuration
+## 💻 Local Development Setup (Default)
 
-- **Frontend Web App:** `https://v-cure-health.vercel.app`
-- **Backend API Server:** `https://vcure-backend.onrender.com/api/v1`
-- **Database:** Supabase PostgreSQL
+The project is configured to run locally out-of-the-box without requiring any remote cloud deployment:
+
+- **Frontend Web App:** `http://localhost:3000`
+- **Backend API Server:** `http://localhost:4000/api/v1`
+
+### Running the Backend (Port 4000)
+```bash
+cd vcure-backend-complete/acc2/apps/api
+npm run start:prod
+# Or development mode with auto-reload:
+# npm run start:dev
+```
+
+### Running the Frontend (Port 3000)
+```bash
+cd vcure-frontend
+npm run dev
+```
+
+Both services are fully connected via CORS (`origin: http://localhost:3000`) and `.env.local`.
 
 ---
 

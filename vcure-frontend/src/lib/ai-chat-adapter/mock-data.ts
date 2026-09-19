@@ -56,28 +56,85 @@ export const MOCK_CONVERSATIONS: ConversationDetail[] = [
           "It's a good fit because it's high in fiber and plant-based protein, which lines up with your current goal and doesn't conflict with anything in your medical profile. It also stays within your calorie target for lunch.",
         status: "sent",
         createdAt: "2026-08-05T09:00:20Z",
-        sources: [{ id: "src1", title: "Vegetable Quinoa Power Bowl", type: "meal_plan" }]
+        sources: [{ id: "src1", title: "Vegetable Quinoa Power Bowl", type: "meal_plan" }],
+        dietOrder: {
+          id: "diet-order-quinoa",
+          title: "Quinoa Power Bowl Ingredients",
+          description: "Fresh ingredients to prepare your recommended high-fiber lunch",
+          items: [
+            { id: "item-quinoa", name: "Organic White Quinoa", quantity: "500g", estimatedPriceInr: 220, category: "Grains" },
+            { id: "item-spinach", name: "Fresh Baby Spinach Leaves", quantity: "250g", estimatedPriceInr: 60, category: "Produce" },
+            { id: "item-olive-oil", name: "Extra Virgin Olive Oil", quantity: "250ml", estimatedPriceInr: 210, category: "Pantry" },
+            { id: "item-chickpeas", name: "Steamed Organic Chickpeas", quantity: "400g", estimatedPriceInr: 140, category: "Produce" }
+          ],
+          totalPriceInr: 630
+        }
+      }
+    ]
+  },
+  {
+    id: "conv-2",
+    title: "Diabetic low-GI breakfast",
+    createdAt: "2026-08-06T08:15:00Z",
+    updatedAt: "2026-08-06T08:18:00Z",
+    lastMessagePreview: "Here is a blood-sugar stabilizing low-GI breakfast...",
+    messages: [
+      {
+        id: "m3",
+        role: "user",
+        content: "Can you recommend a healthy low-GI breakfast for managing my blood sugar?",
+        status: "sent",
+        createdAt: "2026-08-06T08:15:00Z"
+      },
+      {
+        id: "m4",
+        role: "assistant",
+        content:
+          "Here is your personalized blood-sugar stabilizing low-GI breakfast: Steel-cut rolled oats with chia seeds, paired with fresh berries and unsweetened almond milk. These complex carbohydrates prevent glucose spikes and provide sustained morning stamina.",
+        status: "sent",
+        createdAt: "2026-08-06T08:15:30Z",
+        sources: [{ id: "src2", title: "Low-GI Breakfast Protocol", type: "medical_profile" }],
+        dietOrder: {
+          id: "diet-order-diabetes",
+          title: "Diabetic Low-GI Breakfast Basket",
+          description: "Fresh, glycemic-controlled ingredients to prepare your morning meal",
+          items: [
+            { id: "item-oats", name: "Steel Cut Rolled Oats", quantity: "500g", estimatedPriceInr: 180, category: "Grains" },
+            { id: "item-chia", name: "Raw Organic Chia Seeds", quantity: "200g", estimatedPriceInr: 140, category: "Pantry" },
+            { id: "item-berries", name: "Fresh Blueberries Pack", quantity: "125g", estimatedPriceInr: 180, category: "Produce" },
+            { id: "item-almond-milk", name: "Unsweetened Almond Milk", quantity: "1L", estimatedPriceInr: 190, category: "Dairy" }
+          ],
+          totalPriceInr: 690
+        }
       }
     ]
   }
 ];
 
-function containsAllergen(message: string, allergies: string[]): string | null {
-  const lower = message.toLowerCase();
-  return allergies.find((allergen) => lower.includes(allergen.toLowerCase())) ?? null;
-}
+import {
+  findContainedAllergens,
+  normalizeAllergenKey,
+  ALLERGEN_CATALOG
+} from "./allergen-safety";
 
 export function buildMockResponse(
-  userMessage: string
+  userMessage: string,
+  medicalContext: MedicalContextSnapshot
 ): { text: string; safetyWarning?: { level: "caution" | "blocked"; message: string } } {
-  const matchedAllergen = containsAllergen(userMessage, MOCK_MEDICAL_CONTEXT.allergies);
+  const allergenMatches = findContainedAllergens(userMessage, medicalContext.allergies);
+  const firstMatch = allergenMatches[0];
 
-  if (matchedAllergen) {
+  if (firstMatch) {
+    const { allergen, matchedAlias } = firstMatch;
+    const key = normalizeAllergenKey(allergen);
+    const def = ALLERGEN_CATALOG[key];
+    const alternatives = def?.safeAlternatives?.join(", ") || "safe allergen-free options";
+
     return {
-      text: `I'd be careful here — ${matchedAllergen.toLowerCase()} is listed as an allergy on your medical profile, so I'd avoid recommending anything containing it. Want me to suggest a safe alternative instead?`,
+      text: `⚠️ Medical Profile Allergy Alert: You have a registered allergy to **${allergen}**. Consuming items containing "${matchedAlias}" could trigger an adverse reaction, so I have strictly excluded it from your recommendations. Instead, I recommend safe alternatives such as ${alternatives}. Would you like an itemized allergen-safe meal basket?`,
       safetyWarning: {
         level: "caution",
-        message: `This mentions ${matchedAllergen}, which is on your allergy list.`
+        message: `Allergy Alert: "${matchedAlias}" conflicts with your registered ${allergen} allergy.`
       }
     };
   }
@@ -88,13 +145,26 @@ export function buildMockResponse(
     };
   }
 
+  const isDairyAllergic = (medicalContext.allergies || []).some((a) =>
+    /dairy|milk|lactose/i.test(a)
+  );
+
   if (/protein/i.test(userMessage)) {
+    const proteinSnack = isDairyAllergic
+      ? "roasted chickpeas or a chia seed pudding"
+      : "Greek yogurt or roasted chickpeas";
     return {
-      text: "Based on your recent logs, you're averaging close to your protein target most days this week, with a couple of lower days around mid-week. Adding a protein-forward snack like Greek yogurt or roasted chickpeas on those days would help close the gap."
+      text: `Based on your recent logs, you're averaging close to your protein target most days this week. Adding an allergen-safe, protein-forward snack like ${proteinSnack} will help close the gap without conflicting with your medical profile.`
     };
   }
 
+  const safeAllergyNotice =
+    medicalContext.allergies && medicalContext.allergies.length > 0
+      ? ` My recommendations are strictly filtered to exclude your registered allergies (${medicalContext.allergies.join(", ")}).`
+      : "";
+
   return {
-    text: "Here's what I can tell you based on your profile and recent activity: your plan currently prioritizes steady blood sugar and adequate protein, and nothing in today's log conflicts with your medical profile. Let me know if you want me to go deeper on any part of it."
+    text: `Here's what I can tell you based on your profile and recent activity: your plan currently prioritizes steady blood sugar and adequate protein, and nothing in today's log conflicts with your medical profile.${safeAllergyNotice} Let me know if you want me to customize a safe meal basket for you.`
   };
 }
+

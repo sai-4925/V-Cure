@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Stethoscope } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useMedicalContext } from "@/hooks/use-ai-chat";
@@ -36,15 +37,38 @@ export function MedicalContextPanel() {
             </div>
           ) : null}
           {data.allergies.length > 0 ? (
-            <div>
-              <p className="text-xs text-text-secondary">Allergies</p>
-              <div className="mt-1 flex flex-wrap gap-1">
+            <div className="rounded-lg border border-red-100 bg-red-50/50 p-2.5">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1 text-xs font-bold text-red-900">
+                  <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                  Active Allergies (Guarded)
+                </span>
+                <Link
+                  href="/profile"
+                  className="text-[10px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline"
+                >
+                  Edit
+                </Link>
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1">
                 {data.allergies.map((a) => (
-                  <Badge key={a} variant="secondary">{a}</Badge>
+                  <Badge key={a} variant="secondary" className="bg-red-100/90 text-red-900 border-red-200">
+                    🛡️ {a}
+                  </Badge>
                 ))}
               </div>
+              <p className="mt-1 text-[10px] text-red-700/80">
+                Bot strictly excludes these ingredients from all meal recommendations & diet orders.
+              </p>
             </div>
-          ) : null}
+          ) : (
+            <div className="flex items-center justify-between text-xs text-text-secondary">
+              <span>No allergies registered</span>
+              <Link href="/profile" className="text-[11px] font-medium text-emerald-700 hover:underline">
+                + Add in Profile
+              </Link>
+            </div>
+          )}
           {data.medications.length > 0 ? (
             <div>
               <p className="text-xs text-text-secondary">Medications</p>

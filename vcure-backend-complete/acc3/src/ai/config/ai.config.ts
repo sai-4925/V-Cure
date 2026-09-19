@@ -10,8 +10,8 @@ import { z } from 'zod';
  */
 
 const aiEnvSchema = z.object({
-  OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required'),
-  GEMINI_API_KEY: z.string().min(1, 'GEMINI_API_KEY is required'),
+  OPENAI_API_KEY: z.string().default('local-dev-mock-openai-key'),
+  GEMINI_API_KEY: z.string().default('local-dev-mock-gemini-key'),
   VECTOR_DB_URL: z.string().optional(),
   AI_DEFAULT_PROVIDER: z.enum(['OPENAI_COMPATIBLE', 'GEMINI']).default('OPENAI_COMPATIBLE'),
   AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { aiChatService } from "@/services/ai-chat-service";
 import { useAiChatStore } from "@/store/ai-chat-store";
+import type { FollowUpAnswer } from "@/lib/ai-chat-adapter/types";
 
 export function useConversations() {
   return useQuery({ queryKey: ["ai-chat", "conversations"], queryFn: aiChatService.getConversations });
@@ -56,14 +57,14 @@ export function useSendMessage(conversationId: string | null) {
   const setIsStreaming = useAiChatStore((state) => state.setIsStreaming);
 
   return useMutation({
-    mutationFn: async (content: string) => {
+    mutationFn: async ({ content, followUpAnswers }: { content: string; followUpAnswers?: FollowUpAnswer[] }) => {
       if (!conversationId) throw new Error("No active conversation");
       setIsStreaming(true);
       setStreamingText("");
       try {
         return await aiChatService.sendMessage(conversationId, content, (partial) => {
           setStreamingText(partial);
-        });
+        }, followUpAnswers);
       } finally {
         setIsStreaming(false);
         setStreamingText(null);

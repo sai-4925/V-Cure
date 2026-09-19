@@ -26,18 +26,16 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('V-Cure database seeding started...\n');
 
-  // Independent master data — safe to run concurrently
-  await Promise.all([
-    seedRolesAndPermissions(prisma),
-    seedGeography(prisma),
-    seedLanguages(prisma),
-    seedReligions(prisma),
-    seedSubscriptionPlans(prisma),
-    seedFoodCategories(prisma),
-    seedAllergyTypes(prisma),
-    seedContentCategories(prisma),
-    seedNutrientCatalogs(prisma),
-  ]);
+  // Independent master data — run sequentially to respect connection limits on pooled database
+  await seedRolesAndPermissions(prisma);
+  await seedGeography(prisma);
+  await seedLanguages(prisma);
+  await seedReligions(prisma);
+  await seedSubscriptionPlans(prisma);
+  await seedFoodCategories(prisma);
+  await seedAllergyTypes(prisma);
+  await seedContentCategories(prisma);
+  await seedNutrientCatalogs(prisma);
 
   // Depends on nothing above, but kept sequential for clear log ordering
   await seedDiseasesAndCategories(prisma);

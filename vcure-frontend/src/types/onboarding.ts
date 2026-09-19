@@ -171,6 +171,7 @@ export interface OnboardingCompleteResponseDto {
 
 export const ONBOARDING_STEPS = [
   "personal-info",
+  "goals",
   "diabetes-category",
   "glucose-labs",
   "lifestyle",

@@ -40,7 +40,7 @@ export function DiabetesCategoryStep() {
   } = useForm<DiabetesCategoryFormValues>({
     resolver: zodResolver(diabetesCategorySchema),
     defaultValues: {
-      category: draft.category || "PREDIABETES",
+      category: draft.category || "NO_DIABETES",
       duration: draft.duration || "NOT_SURE",
       isGestational: draft.isGestational || false
     }

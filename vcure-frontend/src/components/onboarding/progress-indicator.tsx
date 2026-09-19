@@ -4,6 +4,7 @@ import { ONBOARDING_STEPS, type OnboardingStep } from "@/types/onboarding";
 
 const STEP_LABELS: Record<OnboardingStep, string> = {
   "personal-info": "Personal",
+  goals: "Goals",
   "diabetes-category": "Condition",
   "glucose-labs": "Glucose",
   lifestyle: "Lifestyle",
@@ -15,7 +16,9 @@ const STEP_LABELS: Record<OnboardingStep, string> = {
 };
 
 export function ProgressIndicator({ currentStep }: { currentStep: OnboardingStep }) {
-  const currentIndex = ONBOARDING_STEPS.indexOf(currentStep);
+  const index = ONBOARDING_STEPS.indexOf(currentStep);
+  const currentIndex = index === -1 ? 0 : index;
+  const safeStep: OnboardingStep = ONBOARDING_STEPS[currentIndex] ?? ONBOARDING_STEPS[0];
   const percent = Math.round(((currentIndex + 1) / ONBOARDING_STEPS.length) * 100);
 
   return (
@@ -23,7 +26,7 @@ export function ProgressIndicator({ currentStep }: { currentStep: OnboardingStep
       {/* Step Header */}
       <div className="flex items-center justify-between text-xs font-bold text-gray-700">
         <span className="uppercase tracking-wider text-emerald-700">
-          Step {currentIndex + 1} of {ONBOARDING_STEPS.length} — {STEP_LABELS[currentStep]}
+          Step {currentIndex + 1} of {ONBOARDING_STEPS.length} — {STEP_LABELS[safeStep]}
         </span>
         <span className="text-gray-400">{percent}%</span>
       </div>

@@ -8,6 +8,9 @@ import { useOnboardingStore } from "@/store/onboarding-store";
 import { useAuthStore } from "@/store/auth-store";
 import type { ExtractedBiomarker, OCRStatus } from "@/types/onboarding";
 
+import { useCompleteOnboarding } from "@/hooks/use-onboarding";
+import { devLogger } from "@/lib/dev-logger";
+
 export function ReportUploadStep() {
   const router = useRouter();
   const draft = useOnboardingStore((state) => state.draft);
@@ -15,6 +18,7 @@ export function ReportUploadStep() {
   const completeOnboarding = useOnboardingStore((state) => state.completeOnboarding);
   const goBack = useOnboardingStore((state) => state.goBack);
   const user = useAuthStore((state) => state.user);
+  const completeMutation = useCompleteOnboarding();
 
   const [file, setFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -56,25 +60,6 @@ export function ReportUploadStep() {
           status: "COMPLETED",
           confidenceScore: 0.94,
           possibleFinding: "Possible finding: Elevated fasting blood glucose"
-        },
-        {
-          name: "Serum Creatinine",
-          value: "0.9",
-          unit: "mg/dL",
-          referenceRange: "0.7 - 1.2 mg/dL",
-          isAbnormal: false,
-          status: "COMPLETED",
-          confidenceScore: 0.98
-        },
-        {
-          name: "Vitamin D (25-OH)",
-          value: "18.5",
-          unit: "ng/mL",
-          referenceRange: "30 - 100 ng/mL",
-          isAbnormal: true,
-          status: "MANUAL_REVIEW_REQUIRED",
-          confidenceScore: 0.82,
-          possibleFinding: "Possible finding: Low Vitamin D level"
         }
       ];
 
@@ -89,8 +74,43 @@ export function ReportUploadStep() {
   };
 
   const handleFinalSubmit = () => {
-    completeOnboarding();
-    router.push("/dashboard");
+    const payload = {
+      personalInfo: {
+        dateOfBirth: (draft.personalInfo as any)?.dateOfBirth || "1992-01-01",
+        gender: draft.personalInfo?.gender || "MALE",
+        phone: (draft.personalInfo as any)?.phone || "+1234567890"
+      },
+      healthProfile: {
+        heightCm: draft.personalInfo?.heightCm || draft.healthProfile?.heightCm || 170,
+        weightKg: draft.personalInfo?.weightKg || draft.healthProfile?.weightKg || 70,
+        bloodGroup: (draft.healthProfile as any)?.bloodGroup
+      },
+      medicalProfile: {
+        conditions: draft.medicalConditions?.conditions || [],
+        allergies: draft.allergies?.allergies || [],
+        medications: draft.medications?.medications?.map((m: any) => typeof m === "string" ? m : m.name) || []
+      },
+      lifestyle: {
+        activityLevel: draft.lifestyle?.activityLevel || "MODERATELY_ACTIVE",
+        sleepHours: draft.lifestyle?.sleepHours || 7,
+        smokingStatus: draft.lifestyle?.smokingStatus,
+        alcoholConsumption: draft.lifestyle?.alcoholConsumption,
+        dietType: draft.foodPreferences?.dietType || "VEGETARIAN"
+      },
+      goals: {
+        primaryGoal: draft.goals?.primaryGoal || "GENERAL_WELLNESS",
+        timeline: draft.goals?.timeline || "THREE_MONTHS"
+      }
+    };
+
+    devLogger.log({
+      action: "ONBOARDING_SUBMIT",
+      validationResult: "SUCCESS",
+      endpoint: "/onboarding/complete",
+      navigationResult: "/dashboard"
+    });
+
+    completeMutation.mutate(payload);
   };
 
   return (
@@ -216,10 +236,11 @@ export function ReportUploadStep() {
         <Button
           type="button"
           onClick={handleFinalSubmit}
+          isLoading={completeMutation.isPending}
           className="rounded-2xl bg-emerald-600 px-6 py-3 font-bold text-white hover:bg-emerald-700 shadow-md flex items-center gap-2"
         >
           <ShieldCheck className="h-4 w-4" />
-          Complete Health Profile & View Plan
+          {completeMutation.isPending ? "Saving Profile..." : "Complete Health Profile & View Plan"}
         </Button>
       </div>
     </div>

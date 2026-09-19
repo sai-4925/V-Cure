@@ -1,273 +1,343 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Upload, FileText, CheckCircle2, AlertTriangle, Sparkles, ShieldCheck, ArrowLeft, Trash2 } from "lucide-react";
+import { Upload, FileText, CheckCircle2, AlertTriangle, Sparkles, ShieldCheck, ArrowLeft, Trash2, Calendar, ExternalLink, Filter } from "lucide-react";
 import { Container } from "@/components/ui/container";
 import { Button } from "@/components/ui/button";
+import { useHealthVaultStore, type VaultDocumentType, type VaultDocument } from "@/store/health-vault-store";
+import { checkReportQuality } from "@/lib/report-quality-checker";
 import { useOnboardingStore } from "@/store/onboarding-store";
 import { useSwipeBack } from "@/hooks/use-swipe-back";
-import type { ExtractedBiomarker, OCRStatus } from "@/types/onboarding";
+import type { ExtractedBiomarker } from "@/types/onboarding";
+
+const REPORT_TYPE_OPTIONS: { value: VaultDocumentType; label: string }[] = [
+  { value: "BLOOD_TEST", label: "Blood Test" },
+  { value: "HBA1C", label: "HbA1c" },
+  { value: "DIABETES", label: "Diabetes Profile" },
+  { value: "BP", label: "Blood Pressure / Cardiac" },
+  { value: "SCAN", label: "Scan / Radiology" },
+  { value: "HOSPITAL", label: "Hospital Discharge Summary" },
+  { value: "PRESCRIPTION", label: "Prescription" },
+  { value: "OTHER", label: "Other Medical Report" }
+];
 
 export default function ReportsPage() {
-  useSwipeBack("/profile");
-  const draft = useOnboardingStore((state) => state.draft);
-  const updateReportUpload = useOnboardingStore((state) => state.updateReportUpload);
+  useSwipeBack("/dashboard");
+  const documents = useHealthVaultStore((state) => state.documents);
+  const fetchDocuments = useHealthVaultStore((state) => state.fetchDocuments);
+  const addDocumentFile = useHealthVaultStore((state) => state.addDocumentFile);
+  const confirmDocument = useHealthVaultStore((state) => state.confirmDocument);
+  const deleteDocument = useHealthVaultStore((state) => state.deleteDocument);
   const updateGlucoseLabs = useOnboardingStore((state) => state.updateGlucoseLabs);
 
-  const [file, setFile] = useState<File | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [ocrStatus, setOcrStatus] = useState<OCRStatus | null>(draft.reportUpload?.ocrStatus || null);
-  const [extractedBiomarkers, setExtractedBiomarkers] = useState<ExtractedBiomarker[]>(
-    draft.reportUpload?.extractedBiomarkers || []
-  );
-  const [userConfirmed, setUserConfirmed] = useState(draft.reportUpload?.userConfirmedFindings || false);
-  const [isSaved, setIsSaved] = useState(false);
+  const [selectedType, setSelectedType] = useState<VaultDocumentType>("BLOOD_TEST");
+  const [customLabel, setCustomLabel] = useState("");
+  const [manualReportDate, setManualReportDate] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<string>("ALL");
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const uploadedFile = e.target.files?.[0];
-    if (!uploadedFile) return;
+  useEffect(() => {
+    fetchDocuments();
+  }, [fetchDocuments]);
 
-    setFile(uploadedFile);
-    setIsProcessing(true);
-    setIsSaved(false);
+  // Filter out insurance documents (insurance has its own page) and sort chronologically by reportDate/uploadDate
+  const reportDocs = documents
+    .filter((d) => d.type !== "INSURANCE")
+    .filter((d) => (filterType === "ALL" ? true : d.type === filterType))
+    .sort((a, b) => {
+      const dateA = new Date(a.reportDate || a.uploadDate).getTime();
+      const dateB = new Date(b.reportDate || b.uploadDate).getTime();
+      return dateB - dateA;
+    });
 
-    // Simulate Multimodal OCR Pipeline processing
-    setTimeout(() => {
-      setIsProcessing(false);
-      setOcrStatus("MANUAL_REVIEW_REQUIRED");
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-      const extracted: ExtractedBiomarker[] = [
-        {
-          name: "HbA1c",
-          value: "6.4",
-          unit: "%",
-          referenceRange: "< 5.7%",
-          isAbnormal: true,
-          status: "MANUAL_REVIEW_REQUIRED",
-          confidenceScore: 0.92,
-          possibleFinding: "Possible finding: Elevated HbA1c (Prediabetes range)"
-        },
-        {
-          name: "Fasting Blood Glucose",
-          value: "115",
-          unit: "mg/dL",
-          referenceRange: "70 - 99 mg/dL",
-          isAbnormal: true,
-          status: "COMPLETED",
-          confidenceScore: 0.96,
-          possibleFinding: "Possible finding: Mildly elevated fasting glucose"
-        },
-        {
-          name: "Total Cholesterol",
-          value: "190",
-          unit: "mg/dL",
-          referenceRange: "< 200 mg/dL",
-          isAbnormal: false,
-          status: "COMPLETED",
-          confidenceScore: 0.95
-        }
-      ];
+    setErrorMsg(null);
+    setIsUploading(true);
 
-      setExtractedBiomarkers(extracted);
-      updateReportUpload({
-        fileName: uploadedFile.name,
-        ocrStatus: "MANUAL_REVIEW_REQUIRED",
-        extractedBiomarkers: extracted,
-        userConfirmedFindings: false
-      });
-    }, 1200);
+    try {
+      // 1. Quality Check
+      const quality = await checkReportQuality(file);
+      if (!quality.isReadable) {
+        setIsUploading(false);
+        setErrorMsg(quality.message);
+        return;
+      }
+
+      // 2. Upload file to backend & storage
+      const reportDate = manualReportDate || new Date().toISOString().split("T")[0];
+      await addDocumentFile(file, selectedType, "Metropolis Diagnostics", reportDate, customLabel || undefined);
+      setIsUploading(false);
+      setCustomLabel("");
+      setManualReportDate("");
+    } catch (err: any) {
+      setIsUploading(false);
+      setErrorMsg(err?.message || "Failed to upload document file.");
+    }
   };
 
-  const handleConfirmAndSave = () => {
-    if (!userConfirmed) return;
+  const handleConfirmReport = async (doc: VaultDocument) => {
+    await confirmDocument(doc.id, doc.extractedBiomarkers, doc.reportDate);
+    if (doc.extractedBiomarkers) {
+      const hba1c = doc.extractedBiomarkers.find((b) => b.name === "HbA1c");
+      const fasting = doc.extractedBiomarkers.find((b) => b.name.includes("Fasting"));
+      if (hba1c || fasting) {
+        updateGlucoseLabs({
+          hba1cPercent: hba1c ? parseFloat(hba1c.value) : 6.1,
+          fastingGlucoseMgDl: fasting ? parseFloat(fasting.value) : 110,
+          dontKnowWillUploadReport: false
+        });
+      }
+    }
+  };
 
-    // Persist confirmed findings into health profile state
-    updateReportUpload({
-      fileName: file?.name || draft.reportUpload?.fileName || "Lab_Report.pdf",
-      ocrStatus: "COMPLETED",
-      extractedBiomarkers,
-      userConfirmedFindings: true
-    });
-
-    const hba1cItem = extractedBiomarkers.find((b) => b.name === "HbA1c");
-    const glucoseItem = extractedBiomarkers.find((b) => b.name.includes("Glucose"));
-
-    updateGlucoseLabs({
-      hba1cPercent: hba1cItem ? parseFloat(hba1cItem.value) : draft.glucoseLabs?.hba1cPercent || 6.1,
-      fastingGlucoseMgDl: glucoseItem ? parseFloat(glucoseItem.value) : draft.glucoseLabs?.fastingGlucoseMgDl || 110,
-      dontKnowWillUploadReport: false
-    });
-
-    setOcrStatus("COMPLETED");
-    setIsSaved(true);
+  const handleDeleteReport = async (id: string) => {
+    if (confirm("Are you sure you want to remove this medical report from your vault?")) {
+      await deleteDocument(id);
+    }
   };
 
   return (
     <div className="min-h-screen bg-gray-50 pb-28">
       {/* Top Header */}
-      <div className="border-b border-gray-100 bg-white px-4 py-4 shadow-xs">
+      <div className="sticky top-0 z-40 border-b border-gray-100 bg-white/95 backdrop-blur-md px-4 py-4 shadow-xs">
         <Container className="max-w-md flex items-center justify-between">
           <Link
-            href="/profile"
+            href="/dashboard"
             className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
-          <h1 className="text-base font-bold text-gray-900">Medical Reports & OCR</h1>
+          <h1 className="text-base font-bold text-gray-900">Health Reports</h1>
           <div className="w-9" />
         </Container>
       </div>
 
-      <Container className="max-w-md px-4 py-6 space-y-5">
-        {/* Info Banner */}
-        <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 text-xs text-emerald-900 flex items-start gap-3">
+      <Container className="max-w-md px-4 py-5 space-y-5">
+        {/* Banner */}
+        <div className="rounded-3xl border border-emerald-100 bg-emerald-50/80 p-4 text-xs text-emerald-900 flex items-start gap-3 shadow-xs">
           <Sparkles className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold">Medical Report Upload & OCR Foundation</p>
-            <p className="mt-0.5 leading-relaxed font-medium">
-              Upload lab reports (PDF, JPG, JPEG, PNG). V-Cure extracts biomarkers for manual review. Confirmed findings safely update your Health Profile and recommendations.
+            <p className="font-extrabold text-emerald-950">Medical Record & Biomarker Storage</p>
+            <p className="mt-0.5 leading-relaxed font-medium text-emerald-800">
+              Securely store previous lab tests (PDF, JPG, PNG). Extracted biomarkers update your personalized wellness profile without non-diagnostic risk.
             </p>
           </div>
         </div>
 
-        {/* Existing Active Report Card */}
-        {draft.reportUpload?.fileName ? (
-          <div className="rounded-3xl border border-gray-100 bg-white p-4 shadow-md space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-gray-900 truncate max-w-[180px]">
-                    {draft.reportUpload.fileName}
-                  </h3>
-                  <p className="text-[10px] font-semibold text-gray-400">
-                    Status: {draft.reportUpload.ocrStatus || "Uploaded"}
-                  </p>
-                </div>
-              </div>
+        {/* Upload Form Box */}
+        <div className="rounded-3xl border border-gray-100 bg-white p-5 shadow-md space-y-4">
+          <h2 className="text-xs font-extrabold uppercase tracking-wider text-gray-500">Upload New Report</h2>
 
-              {draft.reportUpload.userConfirmedFindings ? (
-                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-extrabold text-emerald-800 flex items-center gap-1">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
-                  Confirmed
-                </span>
-              ) : (
-                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-extrabold text-amber-800 flex items-center gap-1">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                  Review Pending
-                </span>
-              )}
-            </div>
-
-            {/* Extracted Biomarkers List */}
-            {draft.reportUpload.extractedBiomarkers && draft.reportUpload.extractedBiomarkers.length > 0 ? (
-              <div className="space-y-2 pt-1 border-t border-gray-100">
-                <p className="text-[11px] font-bold text-gray-700">Extracted Biomarkers:</p>
-                {draft.reportUpload.extractedBiomarkers.map((bm, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-xs bg-gray-50 p-2.5 rounded-xl">
-                    <span className="font-semibold text-gray-800">{bm.name}</span>
-                    <span className={`font-bold ${bm.isAbnormal ? "text-amber-700" : "text-emerald-700"}`}>
-                      {bm.value} {bm.unit}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : null}
+          {/* Report Type Selector */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+              Report Type / Category
+            </label>
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value as VaultDocumentType)}
+              className="w-full rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs font-bold text-gray-900 focus:border-emerald-500 focus:outline-none"
+            >
+              {REPORT_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
-        ) : null}
 
-        {/* Upload File Input */}
-        <div className="relative border-2 border-dashed border-gray-200 rounded-3xl p-6 text-center bg-gray-50 hover:bg-gray-100/80 transition-all">
-          <input
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png"
-            onChange={handleFileUpload}
-            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-          />
-          <div className="flex flex-col items-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 mb-3 shadow-xs">
-              <Upload className="h-6 w-6" />
+          {/* Custom Name / Description if Other */}
+          {selectedType === "OTHER" ? (
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                Specific Report Name
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Thyroid Profile, Liver Function Test"
+                value={customLabel}
+                onChange={(e) => setCustomLabel(e.target.value)}
+                className="w-full rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs font-medium text-gray-900 focus:border-emerald-500 focus:outline-none"
+              />
             </div>
-            <p className="text-sm font-bold text-gray-900">Upload New Report</p>
-            <p className="text-xs font-semibold text-gray-400 mt-1">PDF, PNG, JPG or JPEG up to 10MB</p>
-            <span className="mt-3 inline-block rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs">
-              Select File
-            </span>
+          ) : null}
+
+          {/* Medical Test Date Entry */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+              Medical Test Date (Optional)
+            </label>
+            <input
+              type="date"
+              value={manualReportDate}
+              onChange={(e) => setManualReportDate(e.target.value)}
+              className="w-full rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs font-medium text-gray-900 focus:border-emerald-500 focus:outline-none"
+            />
+            <p className="text-[10px] text-gray-400 font-medium mt-1">
+              Leave blank to automatically detect or default to today&apos;s upload date.
+            </p>
+          </div>
+
+          {/* File Picker Zone */}
+          <div className="relative border-2 border-dashed border-gray-200 rounded-3xl p-5 text-center bg-gray-50 hover:bg-gray-100/80 transition-all cursor-pointer">
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleFileUpload}
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+            />
+            <div className="flex flex-col items-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 mb-2 shadow-xs">
+                <Upload className="h-5 w-5" />
+              </div>
+              <p className="text-xs font-extrabold text-gray-900">Select Document File</p>
+              <p className="text-[10px] font-medium text-gray-400 mt-0.5">PDF, JPG, JPEG, or PNG up to 10MB</p>
+            </div>
+          </div>
+
+          {/* Processing Indicator */}
+          {isUploading ? (
+            <div className="rounded-2xl border border-gray-100 bg-emerald-50 p-3.5 text-center text-xs font-bold text-emerald-900 shadow-xs flex items-center justify-center gap-2">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
+              Uploading to private vault & running document OCR...
+            </div>
+          ) : null}
+
+          {/* Error Message */}
+          {errorMsg ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-900 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Existing Uploaded Reports List Header & Filter */}
+        <div className="flex items-center justify-between pt-2">
+          <h2 className="text-sm font-extrabold text-gray-900 flex items-center gap-2">
+            <FileText className="h-4 w-4 text-emerald-600" />
+            Previous Health Reports ({reportDocs.length})
+          </h2>
+
+          <div className="flex items-center gap-1.5 bg-gray-100 px-2.5 py-1 rounded-xl text-[11px] font-bold text-gray-700">
+            <Filter className="h-3 w-3 text-gray-500" />
+            <select
+              value={filterType}
+              onChange={(e) => setFilterType(e.target.value)}
+              className="bg-transparent text-[11px] font-bold text-gray-800 focus:outline-none cursor-pointer"
+            >
+              <option value="ALL">All Reports</option>
+              <option value="BLOOD_TEST">Blood Tests</option>
+              <option value="HBA1C">HbA1c</option>
+              <option value="PRESCRIPTION">Prescriptions</option>
+              <option value="OTHER">Other</option>
+            </select>
           </div>
         </div>
 
-        {/* Loader */}
-        {isProcessing ? (
-          <div className="rounded-3xl border border-gray-100 bg-white p-6 text-center shadow-xs">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-3 border-emerald-600 border-t-transparent mb-2" />
-            <p className="text-xs font-bold text-gray-900">Running OCR Extraction...</p>
-          </div>
-        ) : null}
-
-        {/* OCR Review & Confirm Section */}
-        {ocrStatus && extractedBiomarkers.length > 0 && !isProcessing ? (
-          <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
-                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                Review Extracted Findings
-              </h3>
-              <span className="text-[10px] font-bold text-amber-800">Manual Confirmation Required</span>
+        {/* Reports List */}
+        <div className="space-y-3">
+          {reportDocs.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-gray-200 bg-white p-8 text-center space-y-2 shadow-xs">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
+                <FileText className="h-6 w-6" />
+              </div>
+              <h3 className="text-sm font-bold text-gray-900">No medical reports uploaded yet</h3>
+              <p className="text-xs text-gray-500 font-medium max-w-xs mx-auto">
+                Upload your blood test, HbA1c, or lab report above to track your medical history safely.
+              </p>
             </div>
+          ) : (
+            reportDocs.map((doc) => {
+              const displayDate = doc.reportDate || "Report date not detected";
 
-            <div className="space-y-2">
-              {extractedBiomarkers.map((bm, idx) => (
-                <div key={idx} className="rounded-xl border border-gray-100 bg-white p-3 text-xs shadow-xs space-y-1">
-                  <div className="flex items-center justify-between font-bold text-gray-900">
-                    <span>{bm.name}</span>
-                    <span className={bm.isAbnormal ? "text-amber-700" : "text-emerald-700"}>
-                      {bm.value} {bm.unit}
-                    </span>
+              return (
+                <div key={doc.id} className="rounded-3xl border border-gray-100 bg-white p-4 shadow-md space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 shrink-0 mt-0.5">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs font-extrabold text-gray-900 truncate max-w-[180px]">
+                          {doc.customTypeLabel || doc.name}
+                        </h3>
+                        <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1 mt-0.5">
+                          <Calendar className="h-3 w-3" />
+                          Test Date: {displayDate}
+                        </p>
+                        <p className="text-[10px] font-medium text-gray-400 mt-0.5">
+                          Uploaded: {doc.uploadDate} • {doc.type.replace("_", " ")}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      {doc.isConfirmed ? (
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-800 flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                          Confirmed
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleConfirmReport(doc)}
+                          className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-extrabold text-amber-800 hover:bg-amber-200 transition-all"
+                        >
+                          Review & Sync
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteReport(doc.id)}
+                        className="p-1 text-gray-400 hover:text-red-600 transition-all"
+                        aria-label="Delete report"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                  {bm.possibleFinding ? (
-                    <p className="text-[11px] font-semibold text-amber-800">{bm.possibleFinding}</p>
+
+                  {/* Document View / Storage Link */}
+                  {doc.storageUrl || doc.fileUrl ? (
+                    <a
+                      href={doc.storageUrl || doc.fileUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 hover:underline bg-emerald-50/80 px-2.5 py-1 rounded-xl"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      View Original Document
+                    </a>
                   ) : null}
-                  <p className="text-[10px] text-gray-400">Reference: {bm.referenceRange}</p>
+
+                  {/* Extracted Biomarkers Section */}
+                  {doc.extractedBiomarkers && doc.extractedBiomarkers.length > 0 ? (
+                    <div className="space-y-1.5 pt-2 border-t border-gray-100">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                        Extracted Document Biomarkers:
+                      </p>
+                      {doc.extractedBiomarkers.map((bm, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-xs bg-gray-50 p-2 rounded-xl">
+                          <span className="font-semibold text-gray-800">{bm.name}</span>
+                          <span className={`font-bold ${bm.isAbnormal ? "text-amber-700" : "text-emerald-700"}`}>
+                            {bm.value} {bm.unit}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
-              ))}
-            </div>
-
-            <div
-              onClick={() => setUserConfirmed(!userConfirmed)}
-              className="cursor-pointer flex items-start gap-3 rounded-xl border border-amber-300 bg-white p-3 shadow-xs mt-2"
-            >
-              <input
-                type="checkbox"
-                checked={userConfirmed}
-                onChange={() => {}}
-                className="mt-0.5 h-4 w-4 rounded-md text-emerald-600 focus:ring-emerald-500"
-              />
-              <span className="text-xs font-bold text-gray-800 leading-tight">
-                I have reviewed these extracted lab findings and confirm updating my Health Profile.
-              </span>
-            </div>
-
-            <Button
-              type="button"
-              disabled={!userConfirmed}
-              onClick={handleConfirmAndSave}
-              className="w-full rounded-2xl bg-emerald-600 py-3 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              <ShieldCheck className="h-4 w-4 mr-1.5" />
-              Confirm & Sync to Health Profile
-            </Button>
-          </div>
-        ) : null}
-
-        {isSaved ? (
-          <div className="rounded-2xl bg-emerald-100 p-3 text-center text-xs font-bold text-emerald-800 flex items-center justify-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            Report findings confirmed & updated in Health Profile!
-          </div>
-        ) : null}
+              );
+            })
+          )}
+        </div>
       </Container>
     </div>
   );

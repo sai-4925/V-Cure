@@ -12,6 +12,8 @@ import { ROUTES } from "@/constants/routes";
 import { useTranslation } from "@/hooks/use-translation";
 import type { Language } from "@/constants/translations";
 
+import { getGreetingName } from "@/lib/cn";
+
 export function TopBar() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const user = useAuthStore((state) => state.user);
@@ -43,7 +45,7 @@ export function TopBar() {
       </button>
 
       <span className="text-sm font-medium text-text-secondary">
-        {user ? `${t.welcomeBack}, ${user.fullName.split(" ")[0] || "User"}` : ""}
+        {user ? `${t.welcomeBack}, ${getGreetingName(user.fullName)}` : ""}
       </span>
 
       <div className="flex items-center gap-3">

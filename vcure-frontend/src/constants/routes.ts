@@ -20,5 +20,6 @@ export const ROUTES = {
   SETTINGS: "/settings",
   NOTIFICATIONS: "/notifications",
   PREMIUM: "/premium",
+  INSURANCE: "/insurance",
   ADMIN: "/admin"
 } as const;

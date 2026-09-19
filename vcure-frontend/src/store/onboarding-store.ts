@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import { ONBOARDING_STEPS, type OnboardingStep } from "@/types/onboarding";
 import type {
   AllergiesFormValues,
@@ -33,8 +32,13 @@ export interface OnboardingDraft {
 }
 
 interface OnboardingState {
+  userId: string | null;
   currentStep: OnboardingStep;
   draft: OnboardingDraft;
+
+  initForUser: (userId: string, fullName?: string) => void;
+  clearForLogout: () => void;
+
   goToStep: (step: OnboardingStep) => void;
   goNext: () => void;
   goBack: () => void;
@@ -55,14 +59,14 @@ interface OnboardingState {
 }
 
 const initialDraft: OnboardingDraft = {
-  personalInfo: { gender: "MALE", heightCm: 170, weightKg: 70, age: 32 },
-  healthProfile: { gender: "MALE", heightCm: 170, weightKg: 70 },
+  personalInfo: {},
+  healthProfile: {},
   medicalProfile: { conditions: [], allergies: [], medications: [] },
-  goals: { primaryGoal: "MANAGE_CONDITION", timeline: "THREE_MONTHS" },
-  diabetesCategory: { category: "PREDIABETES", isGestational: false },
-  glucoseLabs: { fastingGlucoseMgDl: 110, hba1cPercent: 6.1, dontKnowWillUploadReport: false },
-  lifestyle: { activityLevel: "MODERATELY_ACTIVE", sleepHours: 7, stressLevel: "MODERATE" },
-  foodPreferences: { dietType: "VEGETARIAN", eggPreference: true, avoidIngredients: [] },
+  goals: {},
+  diabetesCategory: {},
+  glucoseLabs: { dontKnowWillUploadReport: false },
+  lifestyle: {},
+  foodPreferences: { avoidIngredients: [] },
   allergies: { allergies: [], intolerances: [] },
   medicalConditions: { conditions: [] },
   medications: { medications: [] },
@@ -70,62 +74,180 @@ const initialDraft: OnboardingDraft = {
   isCompleted: false
 };
 
-export const useOnboardingStore = create<OnboardingState>()(
-  persist(
-    (set, get) => ({
-      currentStep: ONBOARDING_STEPS[0],
-      draft: initialDraft,
+function getStorageKey(userId: string | null): string {
+  if (!userId) return "vcure-onboarding-draft:anonymous";
+  return `vcure-onboarding-draft:${userId}`;
+}
 
-      goToStep: (step) => set({ currentStep: step }),
+function persistToStorage(userId: string | null, currentStep: OnboardingStep, draft: OnboardingDraft) {
+  if (typeof window === "undefined" || !userId) return;
+  try {
+    const key = getStorageKey(userId);
+    window.localStorage.setItem(key, JSON.stringify({ currentStep, draft }));
+  } catch (err) {
+    // ignore storage quota errors
+  }
+}
 
-      goNext: () => {
-        const index = ONBOARDING_STEPS.indexOf(get().currentStep);
-        const next = ONBOARDING_STEPS[Math.min(index + 1, ONBOARDING_STEPS.length - 1)];
-        set({ currentStep: next });
-      },
+export const useOnboardingStore = create<OnboardingState>()((set, get) => ({
+  userId: null,
+  currentStep: ONBOARDING_STEPS[0],
+  draft: initialDraft,
 
-      goBack: () => {
-        const index = ONBOARDING_STEPS.indexOf(get().currentStep);
-        const previous = ONBOARDING_STEPS[Math.max(index - 1, 0)];
-        set({ currentStep: previous });
-      },
-
-      updatePersonalInfo: (values) =>
-        set((state) => ({ draft: { ...state.draft, personalInfo: values } })),
-      updateHealthProfile: (values) =>
-        set((state) => ({ draft: { ...state.draft, healthProfile: values } })),
-      updateMedicalProfile: (values) =>
-        set((state) => ({ draft: { ...state.draft, medicalProfile: values } })),
-      updateGoals: (values) =>
-        set((state) => ({ draft: { ...state.draft, goals: values } })),
-      updateDiabetesCategory: (values) =>
-        set((state) => ({ draft: { ...state.draft, diabetesCategory: values } })),
-      updateGlucoseLabs: (values) =>
-        set((state) => ({ draft: { ...state.draft, glucoseLabs: values } })),
-      updateLifestyle: (values) =>
-        set((state) => ({ draft: { ...state.draft, lifestyle: values } })),
-      updateFoodPreferences: (values) =>
-        set((state) => ({ draft: { ...state.draft, foodPreferences: values } })),
-      updateAllergies: (values) =>
-        set((state) => ({ draft: { ...state.draft, allergies: values } })),
-      updateMedicalConditions: (values) =>
-        set((state) => ({ draft: { ...state.draft, medicalConditions: values } })),
-      updateMedications: (values) =>
-        set((state) => ({ draft: { ...state.draft, medications: values } })),
-      updateReportUpload: (values) =>
-        set((state) => ({ draft: { ...state.draft, reportUpload: values } })),
-
-      completeOnboarding: () =>
-        set((state) => ({ draft: { ...state.draft, isCompleted: true } })),
-
-      reset: () => set({ currentStep: ONBOARDING_STEPS[0], draft: initialDraft })
-    }),
-    {
-      name: "vcure-onboarding-draft",
-      partialize: (state) => ({
-        currentStep: state.currentStep,
-        draft: state.draft
-      })
+  initForUser: (userId, fullName) => {
+    if (typeof window !== "undefined") {
+      // Clean legacy global key to prevent data leakage across users
+      window.localStorage.removeItem("vcure-onboarding-draft");
+      const key = getStorageKey(userId);
+      const raw = window.localStorage.getItem(key);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          const safeStep = ONBOARDING_STEPS.includes(parsed.currentStep)
+            ? parsed.currentStep
+            : ONBOARDING_STEPS[0];
+          const draft = parsed.draft || { ...initialDraft };
+          if (fullName && (!draft.personalInfo?.fullName || draft.personalInfo.fullName.trim() === "")) {
+            draft.personalInfo = { ...draft.personalInfo, fullName };
+          }
+          set({ userId, currentStep: safeStep, draft });
+          persistToStorage(userId, safeStep, draft);
+          return;
+        } catch {
+          // parse error, fallback to fresh
+        }
+      }
     }
-  )
-);
+    const freshDraft: OnboardingDraft = {
+      ...initialDraft,
+      personalInfo: { fullName: fullName || "" }
+    };
+    set({ userId, currentStep: ONBOARDING_STEPS[0], draft: freshDraft });
+    persistToStorage(userId, ONBOARDING_STEPS[0], freshDraft);
+  },
+
+  clearForLogout: () => {
+    set({ userId: null, currentStep: ONBOARDING_STEPS[0], draft: initialDraft });
+  },
+
+  goToStep: (step) => {
+    const safeStep = ONBOARDING_STEPS.includes(step) ? step : ONBOARDING_STEPS[0];
+    set({ currentStep: safeStep });
+    persistToStorage(get().userId, safeStep, get().draft);
+  },
+
+  goNext: () => {
+    const index = ONBOARDING_STEPS.indexOf(get().currentStep);
+    const safeIndex = index === -1 ? 0 : index;
+    const next = ONBOARDING_STEPS[Math.min(safeIndex + 1, ONBOARDING_STEPS.length - 1)] ?? ONBOARDING_STEPS[0];
+    set({ currentStep: next });
+    persistToStorage(get().userId, next, get().draft);
+  },
+
+  goBack: () => {
+    const index = ONBOARDING_STEPS.indexOf(get().currentStep);
+    const safeIndex = index === -1 ? 0 : index;
+    const previous = ONBOARDING_STEPS[Math.max(safeIndex - 1, 0)] ?? ONBOARDING_STEPS[0];
+    set({ currentStep: previous });
+    persistToStorage(get().userId, previous, get().draft);
+  },
+
+  updatePersonalInfo: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, personalInfo: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateHealthProfile: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, healthProfile: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateMedicalProfile: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, medicalProfile: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateGoals: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, goals: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateDiabetesCategory: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, diabetesCategory: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateGlucoseLabs: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, glucoseLabs: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateLifestyle: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, lifestyle: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateFoodPreferences: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, foodPreferences: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateAllergies: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, allergies: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateMedicalConditions: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, medicalConditions: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateMedications: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, medications: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+  updateReportUpload: (values) => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, reportUpload: values };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+
+  completeOnboarding: () => {
+    set((state) => {
+      const updatedDraft = { ...state.draft, isCompleted: true };
+      persistToStorage(state.userId, state.currentStep, updatedDraft);
+      return { draft: updatedDraft };
+    });
+  },
+
+  reset: () => {
+    const state = get();
+    set({ currentStep: ONBOARDING_STEPS[0], draft: initialDraft });
+    persistToStorage(state.userId, ONBOARDING_STEPS[0], initialDraft);
+  }
+}));

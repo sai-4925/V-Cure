@@ -135,6 +135,47 @@ export class TrackingService {
     return { start, end };
   }
 
+  /** Health Readings — POST /health-readings */
+  async logHealthReading(
+    userId: string,
+    dto: {
+      metricType: any;
+      value: number;
+      secondaryValue?: number;
+      unit: string;
+      context?: any;
+      notes?: string;
+      recordedAt?: string;
+    },
+  ) {
+    const recordedAt = dto.recordedAt ? new Date(dto.recordedAt) : new Date();
+    return this.repository.createHealthReading({
+      userId,
+      metricType: dto.metricType,
+      value: dto.value,
+      secondaryValue: dto.secondaryValue ?? null,
+      unit: dto.unit,
+      context: dto.context ?? null,
+      notes: dto.notes ?? null,
+      recordedAt,
+    });
+  }
+
+  /** Health Readings — GET /health-readings */
+  async getHealthReadings(
+    userId: string,
+    query?: { metricType?: string; days?: number },
+  ) {
+    let fromDate: Date | undefined = undefined;
+    if (query?.days) {
+      fromDate = new Date(Date.now() - query.days * 24 * 60 * 60 * 1000);
+    }
+    return this.repository.findHealthReadings(userId, {
+      metricType: query?.metricType,
+      from: fromDate,
+    });
+  }
+
   private toResponse(entry: WaterTracking): WaterEntryResponse {
     return { id: entry.id, amountMl: entry.amountMl, loggedAt: entry.loggedAt };
   }

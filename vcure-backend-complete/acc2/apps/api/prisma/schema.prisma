@@ -297,6 +297,7 @@ model User {
   dailyLifestyles DailyLifestyle[]
   vitals          Vitals[]
   healthScores    HealthScore[]
+  healthReadings  HealthReading[]
 
   medicalConditions MedicalCondition[]
   medicines         Medicine[]
@@ -2504,3 +2505,45 @@ model SubscriptionPlan {
 
   @@map("subscription_plans")
 }
+
+// ============================================================
+// HEALTH MONITORING DOMAIN — Phase 3 Extension
+// Support logging/tracking: Blood Glucose, HbA1c, Blood Pressure, Weight
+// ============================================================
+
+enum HealthMetricType {
+  BLOOD_GLUCOSE
+  HBA1C
+  BLOOD_PRESSURE
+  WEIGHT
+}
+
+enum GlucoseContext {
+  FASTING
+  POST_MEAL
+  RANDOM
+  BEDTIME
+  GENERAL
+}
+
+model HealthReading {
+  id             String           @id @default(uuid()) @db.Uuid
+  userId         String           @db.Uuid
+  metricType     HealthMetricType
+  value          Float            // primary numeric value (mg/dL, %, mmHg systolic, kg)
+  secondaryValue Float?           // e.g., mmHg diastolic for blood pressure
+  unit           String           // mg/dL, %, mmHg, kg
+  context        GlucoseContext?  // FASTING, POST_MEAL, RANDOM, BEDTIME, GENERAL
+  notes          String?
+  recordedAt     DateTime         @default(now())
+  source         TrackingSource   @default(MANUAL)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, metricType, recordedAt])
+  @@map("health_readings")
+}
+

@@ -33,7 +33,8 @@ export class DashboardService {
 
     const bmi = healthProfile?.bmi ?? null;
 
-    const name = profile?.fullName && profile.fullName.trim() !== '' ? profile.fullName : 'Demo Patient';
+    const profileName = (profile as any)?.fullName || [profile?.firstName, profile?.lastName].filter(Boolean).join(' ').trim();
+    const name = profileName && profileName !== '' ? profileName : 'V-Cure Patient';
 
     return {
       fullName: name,

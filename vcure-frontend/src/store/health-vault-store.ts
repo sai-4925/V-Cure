@@ -18,15 +18,19 @@ export interface InsuranceMetadata {
   provider: string;
   policyName: string;
   policyNumber?: string;
+  policyHolder?: string;
   startDate?: string;
   expiryDate?: string;
   renewalDate?: string;
+  coverageDetails?: string;
+  supportNumber?: string;
 }
 
 export interface VaultDocument {
   id: string;
   name: string;
   type: VaultDocumentType;
+  customTypeLabel?: string;
   uploadDate: string;
   hospitalLabName?: string;
   reportDate?: string;
@@ -42,9 +46,15 @@ export interface VaultDocument {
 interface HealthVaultState {
   documents: VaultDocument[];
   fetchDocuments: () => Promise<void>;
-  addDocumentFile: (file: File, category: VaultDocumentType, hospitalLabName?: string) => Promise<VaultDocument | null>;
+  addDocumentFile: (
+    file: File,
+    category: VaultDocumentType,
+    hospitalLabName?: string,
+    reportDate?: string,
+    customTypeLabel?: string
+  ) => Promise<VaultDocument | null>;
   addDocument: (doc: Omit<VaultDocument, "id">) => Promise<void>;
-  confirmDocument: (id: string, updatedBiomarkers?: ExtractedBiomarker[]) => Promise<void>;
+  confirmDocument: (id: string, updatedBiomarkers?: ExtractedBiomarker[], updatedReportDate?: string) => Promise<void>;
   deleteDocument: (id: string) => Promise<void>;
 }
 
@@ -69,12 +79,14 @@ export const useHealthVaultStore = create<HealthVaultState>()(
         }
       },
 
-      addDocumentFile: async (file, category, hospitalLabName) => {
+      addDocumentFile: async (file, category, hospitalLabName, reportDate, customTypeLabel) => {
         try {
           const formData = new FormData();
           formData.append("file", file);
           formData.append("category", category);
           if (hospitalLabName) formData.append("hospitalLabName", hospitalLabName);
+          if (reportDate) formData.append("reportDate", reportDate);
+          if (customTypeLabel) formData.append("customTypeLabel", customTypeLabel);
 
           const res = await fetch("/api/medical-reports", {
             method: "POST",
@@ -113,7 +125,7 @@ export const useHealthVaultStore = create<HealthVaultState>()(
         }
       },
 
-      confirmDocument: async (id, updatedBiomarkers) => {
+      confirmDocument: async (id, updatedBiomarkers, updatedReportDate) => {
         set((state) => ({
           documents: state.documents.map((d) =>
             d.id === id
@@ -121,7 +133,8 @@ export const useHealthVaultStore = create<HealthVaultState>()(
                   ...d,
                   isConfirmed: true,
                   ocrStatus: "COMPLETED" as OCRStatus,
-                  extractedBiomarkers: updatedBiomarkers || d.extractedBiomarkers
+                  extractedBiomarkers: updatedBiomarkers || d.extractedBiomarkers,
+                  reportDate: updatedReportDate || d.reportDate
                 }
               : d
           )

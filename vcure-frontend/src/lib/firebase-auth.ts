@@ -51,6 +51,17 @@ export async function signInWithGoogleIdToken(): Promise<string> {
     const idToken = await userCredential.user.getIdToken();
     return idToken;
   } catch (popupErr: any) {
+    if (typeof window !== "undefined") {
+      console.error("[Firebase Auth Diagnostic]", {
+        name: popupErr?.name,
+        code: popupErr?.code,
+        message: popupErr?.message,
+        origin: window.location.origin,
+        authDomain: auth.config.authDomain,
+        providerId: provider.providerId
+      });
+    }
+
     // If popup is blocked or unsupported in mobile WebView, fallback to redirect or throw detailed error
     if (
       popupErr?.code === "auth/popup-blocked" ||

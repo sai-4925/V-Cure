@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { profileService } from "@/services/profile-service";
 import { ApiError } from "@/lib/api-client";
+import { useAuthStore } from "@/store/auth-store";
 import type { UserProfileFormValues } from "@/lib/validation/profile";
 import type {
   HealthProfileFormValues,
@@ -19,9 +20,24 @@ export function useUserProfile() {
 
 export function useUpdateUserProfile() {
   const queryClient = useQueryClient();
+  const setSession = useAuthStore((state) => state.setSession);
+  const authUser = useAuthStore((state) => state.user);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const refreshToken = useAuthStore((state) => state.refreshToken);
+
   return useMutation({
     mutationFn: (payload: UserProfileFormValues) => profileService.updateUserProfile(payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["profile", "user"] })
+    onSuccess: (updatedData, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["profile", "user"] });
+      const newFullName = variables.fullName || updatedData?.fullName;
+      if (authUser && accessToken && refreshToken && newFullName) {
+        setSession(
+          { ...authUser, fullName: newFullName },
+          accessToken,
+          refreshToken
+        );
+      }
+    }
   });
 }
 

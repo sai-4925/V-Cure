@@ -49,6 +49,7 @@ export class AuthService {
     }
 
     const { uid, email, email_verified } = decoded;
+    const googleDisplayName = (decoded as any).name || (decoded as any).displayName || '';
 
     if (!email) {
       throw new UnauthorizedException('Firebase account has no associated email');
@@ -58,7 +59,21 @@ export class AuthService {
     try {
       user = await this.authRepository.upsertUserByFirebaseUid(
         uid,
-        { firebaseUid: uid, email, emailVerified: !!email_verified },
+        {
+          firebaseUid: uid,
+          email,
+          emailVerified: !!email_verified,
+          ...(googleDisplayName
+            ? {
+                profile: {
+                  create: {
+                    firstName: googleDisplayName.split(' ')[0] || googleDisplayName,
+                    lastName: googleDisplayName.split(' ').slice(1).join(' ') || '',
+                  },
+                },
+              }
+            : {}),
+        },
         { emailVerified: !!email_verified },
       );
     } catch (dbErr) {
@@ -104,7 +119,7 @@ export class AuthService {
             firebaseUid: `uid-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             status: 'ACTIVE',
             emailVerified: true,
-            onboardingComplete: true,
+            onboardingComplete: false,
             profile: {
               create: {
                 firstName: dto.fullName.split(' ')[0] || 'User',
@@ -128,8 +143,8 @@ export class AuthService {
         email,
         emailVerified: true,
         status: 'ACTIVE',
-        onboardingComplete: true,
-        profile: { fullName: dto.fullName || 'Demo User' },
+        onboardingComplete: false,
+        profile: { fullName: dto.fullName || 'V-Cure Patient' },
         userRoles: [{ role: { name: 'USER' } }],
       };
     }
@@ -156,7 +171,7 @@ export class AuthService {
       if (!user) {
         // Auto-provision user on email login if first time
         return this.registerWithEmail({
-          fullName: email.split('@')[0] || 'V-Cure Patient',
+          fullName: 'V-Cure Patient',
           email,
           password: dto.password,
         });
@@ -171,7 +186,7 @@ export class AuthService {
         emailVerified: true,
         status: 'ACTIVE',
         onboardingComplete: true,
-        profile: { fullName: email.split('@')[0] || 'V-Cure Patient' },
+        profile: { fullName: 'V-Cure Patient' },
         userRoles: [{ role: { name: 'USER' } }],
       };
     }
@@ -183,7 +198,7 @@ export class AuthService {
   /**
    * Maps a User (with optional profile) to the canonical ACC1 auth payload.
    * `fullName` lives on UserProfile, which does not exist until the user
-   * completes onboarding — an empty string is returned until then rather than
+   * completes onboarding — an empty string or profile name is returned rather than
    * inventing a placeholder name.
    */
   private toAuthUser(user: {
@@ -191,13 +206,18 @@ export class AuthService {
     email: string;
     emailVerified: boolean;
     onboardingComplete: boolean;
-    profile?: { fullName: string } | null;
+    profile?: { fullName?: string; firstName?: string; lastName?: string } | null;
     userRoles?: { role: { name: string } }[];
   }): AuthUser {
     const roles = (user.userRoles ?? []).map((ur) => ur.role.name);
+    let resolvedName = user.profile?.fullName ?? '';
+    if (!resolvedName && user.profile) {
+      const parts = [user.profile.firstName, user.profile.lastName].filter(Boolean);
+      resolvedName = parts.join(' ').trim();
+    }
     return {
       id: user.id,
-      fullName: user.profile?.fullName ?? '',
+      fullName: resolvedName,
       email: user.email,
       emailVerified: user.emailVerified,
       roles,

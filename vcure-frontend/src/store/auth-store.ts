@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { AuthUserDto } from "@/types/auth";
+import { useOnboardingStore } from "./onboarding-store";
 
 interface AuthState {
   user: AuthUserDto | null;
@@ -16,9 +17,16 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       accessToken: null,
       refreshToken: null,
-      setSession: (user, accessToken, refreshToken) =>
-        set({ user, accessToken, refreshToken }),
-      clearSession: () => set({ user: null, accessToken: null, refreshToken: null })
+      setSession: (user, accessToken, refreshToken) => {
+        set({ user, accessToken, refreshToken });
+        if (user?.id) {
+          useOnboardingStore.getState().initForUser(user.id, user.fullName);
+        }
+      },
+      clearSession: () => {
+        useOnboardingStore.getState().clearForLogout();
+        set({ user: null, accessToken: null, refreshToken: null });
+      }
     }),
     {
       name: "vcure-auth",

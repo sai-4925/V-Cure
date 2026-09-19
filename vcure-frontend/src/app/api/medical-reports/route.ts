@@ -21,6 +21,8 @@ export async function POST(request: Request) {
     const file = formData.get("file") as File | null;
     const category = (formData.get("category") as string) || "BLOOD_TEST";
     const hospitalLabName = (formData.get("hospitalLabName") as string) || "Metropolis Diagnostics";
+    const reqReportDate = formData.get("reportDate") as string | null;
+    const customTypeLabel = formData.get("customTypeLabel") as string | null;
 
     if (!file) {
       return NextResponse.json(
@@ -89,8 +91,9 @@ export async function POST(request: Request) {
       name: fileName,
       title: fileName,
       type: category,
+      customTypeLabel: customTypeLabel || undefined,
       uploadDate: todayStr,
-      reportDate: todayStr,
+      reportDate: reqReportDate || todayStr,
       hospitalLabName,
       ocrStatus: category === "INSURANCE" ? "COMPLETED" : "MANUAL_REVIEW_REQUIRED",
       isConfirmed: category === "INSURANCE",

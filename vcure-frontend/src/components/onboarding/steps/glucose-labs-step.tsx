@@ -24,9 +24,9 @@ export function GlucoseLabsStep() {
   } = useForm<GlucoseLabsFormValues>({
     resolver: zodResolver(glucoseLabsSchema),
     defaultValues: {
-      fastingGlucoseMgDl: draft.fastingGlucoseMgDl || 110,
-      randomGlucoseMgDl: draft.randomGlucoseMgDl || 140,
-      hba1cPercent: draft.hba1cPercent || 6.1,
+      fastingGlucoseMgDl: draft.fastingGlucoseMgDl ?? undefined,
+      randomGlucoseMgDl: draft.randomGlucoseMgDl ?? undefined,
+      hba1cPercent: draft.hba1cPercent ?? undefined,
       dontKnowWillUploadReport: draft.dontKnowWillUploadReport || false
     }
   });

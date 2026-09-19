@@ -64,4 +64,27 @@ export class TrackingRepository extends BaseRepository {
   ): Promise<ExerciseTracking> {
     return this.db(tx).exerciseTracking.create({ data });
   }
+
+  // --- Health Readings ---
+  createHealthReading(
+    data: Prisma.HealthReadingUncheckedCreateInput,
+    tx?: PrismaTx,
+  ) {
+    return this.db(tx).healthReading.create({ data });
+  }
+
+  findHealthReadings(
+    userId: string,
+    options?: { metricType?: string; from?: Date },
+    tx?: PrismaTx,
+  ) {
+    return this.db(tx).healthReading.findMany({
+      where: {
+        userId,
+        ...(options?.metricType ? { metricType: options.metricType as any } : {}),
+        ...(options?.from ? { recordedAt: { gte: options.from } } : {}),
+      },
+      orderBy: { recordedAt: 'desc' },
+    });
+  }
 }

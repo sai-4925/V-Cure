@@ -1,4 +1,4 @@
-import { API_BASE_URL } from "@/constants/api";
+import { API_BASE_URL, getApiBaseUrl } from "@/constants/api";
 import type { ApiErrorDto } from "@/types/auth";
 import { useAuthStore } from "@/store/auth-store";
 
@@ -22,7 +22,8 @@ async function request<TResponse>(
 ): Promise<TResponse> {
   const accessToken = skipAuth ? undefined : useAuthStore.getState().accessToken;
 
-  const fullUrl = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
+  const baseUrl = getApiBaseUrl();
+  const fullUrl = path.startsWith("http") ? path : `${baseUrl}${path}`;
 
   const response = await fetch(fullUrl, {
     ...options,

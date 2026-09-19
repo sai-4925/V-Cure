@@ -7,6 +7,7 @@ import { SelectField } from "@/components/ui/select-field";
 import { Button } from "@/components/ui/button";
 import { personalInfoSchema, type PersonalInfoFormValues } from "@/lib/validation/onboarding";
 import { useOnboardingStore } from "@/store/onboarding-store";
+import { useAuthStore } from "@/store/auth-store";
 import { useTranslation } from "@/hooks/use-translation";
 
 const GENDER_OPTIONS = [
@@ -17,6 +18,7 @@ const GENDER_OPTIONS = [
 ];
 
 export function PersonalInfoStep() {
+  const authUser = useAuthStore((state) => state.user);
   const draft = useOnboardingStore((state) => state.draft.personalInfo);
   const updatePersonalInfo = useOnboardingStore((state) => state.updatePersonalInfo);
   const goNext = useOnboardingStore((state) => state.goNext);
@@ -29,11 +31,11 @@ export function PersonalInfoStep() {
   } = useForm<PersonalInfoFormValues>({
     resolver: zodResolver(personalInfoSchema),
     defaultValues: {
-      fullName: draft.fullName || "Demo User",
-      age: draft.age || 32,
+      fullName: draft.fullName || authUser?.fullName || "",
+      age: draft.age ?? undefined,
       gender: draft.gender || "MALE",
-      heightCm: draft.heightCm || 170,
-      weightKg: draft.weightKg || 70
+      heightCm: draft.heightCm ?? undefined,
+      weightKg: draft.weightKg ?? undefined
     }
   });
 

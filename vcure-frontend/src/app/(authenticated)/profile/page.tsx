@@ -24,6 +24,7 @@ import { LifestyleSection } from "@/components/profile/lifestyle-section";
 import { GoalsSection } from "@/components/profile/goals-section";
 import { FamilyFriendsSection } from "@/components/profile/family-friends-section";
 import { HealthVaultSection } from "@/components/profile/health-vault-section";
+import { FitnessDevicesSection } from "@/components/profile/fitness-devices-section";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import type { Language } from "@/constants/translations";
 
@@ -35,7 +36,7 @@ export default function ProfilePage() {
   const setLanguage = useLanguageStore((state) => state.setLanguage);
   const t = useLanguageStore((state) => state.getTranslation());
 
-  const [activeTab, setActiveTab] = useState<"overview" | "family" | "vault" | "edit-medical">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "family" | "vault" | "devices" | "edit-medical">("overview");
 
   const userName = draft.personalInfo?.fullName
     ? draft.personalInfo.fullName
@@ -100,7 +101,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Navigation Tabs (Overview, Family, Vault, Edit Medical) */}
+        {/* Navigation Tabs (Overview, Devices, Family, Vault, Edit Medical) */}
         <div className="flex rounded-2xl bg-gray-200/70 p-1 text-center">
           <button
             type="button"
@@ -110,6 +111,15 @@ export default function ProfilePage() {
             }`}
           >
             Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("devices")}
+            className={`flex-1 rounded-xl py-2 text-[11px] font-bold transition-all ${
+              activeTab === "devices" ? "bg-white text-emerald-700 shadow-sm" : "text-gray-600"
+            }`}
+          >
+            Devices
           </button>
           <button
             type="button"
@@ -154,12 +164,15 @@ export default function ProfilePage() {
                 </span>
               </div>
               <p className="text-[11px] font-medium text-emerald-800/90 leading-relaxed">
-                Your meals & AI guidance are personalized specifically for{" "}
+                Your meals &amp; AI guidance are personalized specifically for{" "}
                 <span className="font-bold">
                   {draft.diabetesCategory?.category?.replace("_", " ") || "Prediabetes"}
                 </span>.
               </p>
             </div>
+
+            {/* Fitness Wearables Showcase Section */}
+            <FitnessDevicesSection />
 
             {/* Quick Access to Family & Health Vault */}
             <div className="grid grid-cols-2 gap-3">
@@ -184,14 +197,14 @@ export default function ProfilePage() {
                   <ShieldCheck className="h-5 w-5" />
                 </div>
                 <h3 className="text-xs font-bold text-gray-900">{t.healthVaultTitle}</h3>
-                <p className="text-[10px] font-medium text-gray-400">Digital reports & insurance</p>
+                <p className="text-[10px] font-medium text-gray-400">Digital reports &amp; insurance</p>
               </button>
             </div>
 
             {/* LEARN & SHOP SECTION */}
             <div className="space-y-2">
               <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 px-1">
-                LEARN & SHOP
+                LEARN &amp; SHOP
               </span>
               <div className="overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-md divide-y divide-gray-100">
                 <Link
@@ -232,6 +245,8 @@ export default function ProfilePage() {
               </div>
             </div>
           </>
+        ) : activeTab === "devices" ? (
+          <FitnessDevicesSection />
         ) : activeTab === "family" ? (
           <FamilyFriendsSection />
         ) : activeTab === "vault" ? (

@@ -7,7 +7,15 @@ import {
   buildMockResponse
 } from "@/lib/ai-chat-adapter/mock-data";
 import { sanitizeDietOrder } from "@/lib/ai-chat-adapter/allergen-safety";
-import type { ChatMessage, Conversation, ConversationDetail, FollowUpQuestionItem } from "@/types/ai-chat";
+import type {
+  AttachedReport,
+  ChatMessage,
+  Conversation,
+  ConversationDetail,
+  FollowUpQuestionItem,
+  SourceReference,
+  TemperatureReading
+} from "@/types/ai-chat";
 import type { AiChatAdapter, FollowUpAnswer } from "@/lib/ai-chat-adapter/types";
 
 export const QUESTION_CATALOG: Record<string, FollowUpQuestionItem> = {
@@ -39,6 +47,47 @@ export const QUESTION_CATALOG: Record<string, FollowUpQuestionItem> = {
     unit: "mg/dL",
     placeholder: "e.g. 105"
   },
+  temperature: {
+    id: "temperature",
+    label: "Body Temperature",
+    description: "Current measured body temperature (e.g. 101.4°F or 38.5°C)",
+    unit: "°F",
+    placeholder: "e.g. 101.2",
+    options: [
+      "Normal (< 99°F)",
+      "Low Grade (99°F – 100.4°F)",
+      "Moderate (100.5°F – 102°F)",
+      "High Fever (> 102°F)"
+    ]
+  },
+  feverDuration: {
+    id: "feverDuration",
+    label: "Fever Duration",
+    description: "How many hours or days have you had the fever?",
+    options: ["< 24 hours", "1–2 days", "3–5 days", "> 5 days"],
+    placeholder: "e.g. 2 days"
+  },
+  feverSymptoms: {
+    id: "feverSymptoms",
+    label: "Associated Symptoms",
+    description: "Chills, body ache, headache, cough, shivering, or fatigue",
+    options: [
+      "Chills / Shivering",
+      "Body Ache & Headache",
+      "Sore Throat & Cough",
+      "Nausea / Loss of Appetite",
+      "Only High Temperature"
+    ],
+    placeholder: "e.g. Chills and body ache"
+  },
+  reportUpload: {
+    id: "reportUpload",
+    label: "Medical / Lab Report (Optional)",
+    description: "Attach CBC, blood test, Widal, Dengue test, or doctor's prescription (PDF, JPG, PNG)",
+    inputType: "file",
+    accept: ".pdf,image/*",
+    placeholder: "Attach lab report file..."
+  },
   duration: {
     id: "duration",
     label: "Symptom Duration",
@@ -56,8 +105,8 @@ export const QUESTION_CATALOG: Record<string, FollowUpQuestionItem> = {
   redFlag: {
     id: "redFlag",
     label: "Emergency Red Flags",
-    description: "Chest tightness, breathlessness, fainting, or severe dizziness",
-    options: ["None", "Shortness of breath", "Chest tightness", "Severe dizziness"],
+    description: "Chest tightness, breathlessness, stiff neck, fainting, or severe dizziness",
+    options: ["None", "Shortness of breath", "Stiff neck / Confusion", "Severe dizziness"],
     placeholder: "e.g. None"
   }
 };
@@ -87,10 +136,11 @@ function toSummary(conversation: ConversationDetail): Conversation {
 
 // Phase tracking per conversation to enforce required-answer batch collection
 type PhaseState = {
-  phase: "diet" | "diabetes" | "symptom";
+  phase: "diet" | "diabetes" | "symptom" | "fever";
   requiredIds: string[];
   answers: Record<string, string>;
   waitingForPlan?: boolean;
+  uploadedReport?: AttachedReport;
 };
 
 const phaseState: Record<string, PhaseState> = {};
@@ -138,7 +188,7 @@ export const mockAiChatAdapter: AiChatAdapter = {
     return delay(undefined);
   },
 
-  async sendMessage(conversationId, content, onChunk, followUpAnswers) {
+  async sendMessage(conversationId, content, onChunk, followUpAnswers, attachedReport) {
     const conversation = findConversation(conversationId);
     const profile = await getRealMedicalContext();
 
@@ -153,8 +203,18 @@ export const mockAiChatAdapter: AiChatAdapter = {
       role: "user",
       content: userDisplayContent,
       status: "sent",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      attachedReport: attachedReport || followUpAnswers?.find((a) => a.file)?.file
     };
+
+    const tempAnswer = followUpAnswers?.find((a) => a.question === "temperature")?.value;
+    if (tempAnswer) {
+      userMessage.temperatureReading = {
+        value: tempAnswer,
+        unit: "°F"
+      };
+    }
+
     conversation.messages.push(userMessage);
     conversation.lastMessagePreview = userDisplayContent.slice(0, 80);
     conversation.updatedAt = userMessage.createdAt;
@@ -165,9 +225,15 @@ export const mockAiChatAdapter: AiChatAdapter = {
     // 2. Process Follow-Up Answers if provided
     if (followUpAnswers && followUpAnswers.length > 0) {
       const convState = phaseState[conversationId] || { phase: "diet", requiredIds: [], answers: {} };
-      followUpAnswers.forEach(({ question, value }) => {
+      followUpAnswers.forEach(({ question, value, file }) => {
         convState.answers = { ...convState.answers, [question]: value };
+        if (file) {
+          convState.uploadedReport = file;
+        }
       });
+      if (attachedReport) {
+        convState.uploadedReport = attachedReport;
+      }
       phaseState[conversationId] = convState;
 
       const state = phaseState[conversationId];
@@ -188,6 +254,94 @@ export const mockAiChatAdapter: AiChatAdapter = {
         };
         conversation.messages.push(assistantMessage);
         conversation.updatedAt = assistantMessage.createdAt;
+        return assistantMessage;
+      }
+
+      // If in fever phase and required questions answered:
+      if (state.phase === "fever") {
+        const tempRaw = answers.temperature || "";
+        const isHighFever = /high|> ?102|10[2-6]|39\.[0-9]|4[0-9]/i.test(tempRaw);
+        const isModerateFever = /mod|100\.[5-9]|101|102/i.test(tempRaw);
+        const isEmergency = /yes|severe|chest.?pain|breath|stiff|faint|unconscious|blood|convuls/i.test(answers.redFlag || "");
+
+        const activeReport =
+          attachedReport ||
+          followUpAnswers.find((a) => a.file)?.file ||
+          state.uploadedReport ||
+          (answers.reportUpload ? { name: answers.reportUpload, size: 524288, type: "application/pdf" } : undefined);
+
+        let feverClassification = "Low-Grade Fever";
+        if (isHighFever) feverClassification = "High-Grade Fever (> 102°F)";
+        else if (isModerateFever) feverClassification = "Moderate Fever (100.5°F – 102°F)";
+
+        const emergencyAlert = isEmergency
+          ? `⚠️ URGENT CLINICAL WARNING: Based on the reported emergency signs (${answers.redFlag}), please seek immediate emergency medical care or contact emergency medical services. High-grade fever accompanied by severe warning signs requires urgent clinical evaluation.`
+          : `Clinical Assessment for ${feverClassification}: For fever recorded at ${tempRaw || "elevated levels"} lasting ${answers.feverDuration || "1-2 days"} with ${answers.feverSymptoms || "body ache/fatigue"}:
+• Temperature Monitoring: Keep checking temperature every 3–4 hours. Use forehead sponging with room-temperature water if uncomfortable. Antipyretics (such as Paracetamol) should be taken only as prescribed by your treating doctor.
+• Vital Hydration: Fever sharply accelerates bodily fluid and electrolyte depletion. Drink 2.5–3.0 liters of fluids today, prioritizing oral rehydration solutions (ORS), tender coconut water, and diluted broths.
+• Rest & Gentle Diet: Nourish your body with easily digestible warm meals such as Moong Dal Khichdi, clear vegetable broth, or rice kanji. Avoid oily, spicy, fried foods, and heavy dairy products.`;
+
+        const reportNote = activeReport
+          ? `\n\n📄 Medical Report Received & Verified: "${activeReport.name}". In acute fevers, doctors review complete blood counts (CBC), platelet levels, and ESR/CRP to differentiate viral syndromes from bacterial infections. Keep this report handy for your upcoming medical consultation.`
+          : `\n\n💡 Tip: If you have a recent blood test (e.g. CBC, Widal, or Dengue report), you can upload it anytime in the chat for contextual guidance.`;
+
+        const fullResponse = `${emergencyAlert}${reportNote}`;
+
+        const userAllergies = profile.allergies || [];
+        const feverBasket = sanitizeDietOrder({
+          id: `diet-order-fever-${Date.now()}`,
+          title: "Fever Recovery & Hydration Kit",
+          description: "Electrolyte-replenishing fluids, light digestible pulses, and immune-supportive herbal tea",
+          items: [
+            { id: "item-ors", name: "WHO Standard Formula ORS (Pack of 5)", quantity: "5 sachets", estimatedPriceInr: 95, category: "Pharmacy" },
+            { id: "item-coconut", name: "Fresh Tender Coconut Water", quantity: "2 units", estimatedPriceInr: 110, category: "Produce" },
+            { id: "item-moong", name: "Organic Yellow Moong Dal (Easy Digest)", quantity: "500g", estimatedPriceInr: 85, category: "Grains" },
+            { id: "item-tulsi-tea", name: "Ayurvedic Tulsi & Ginger Infusion", quantity: "100g", estimatedPriceInr: 135, category: "Pantry" }
+          ],
+          totalPriceInr: 425
+        }, userAllergies);
+
+        const sources: SourceReference[] = [
+          { id: "src-fever-protocol", title: "ICMR Clinical Fever & Hydration Guidelines", type: "medical_profile" }
+        ];
+        if (activeReport) {
+          sources.push({
+            id: "src-attached-report",
+            title: `Uploaded Lab Report: ${activeReport.name}`,
+            type: "medical_profile"
+          });
+        }
+
+        const assistantMessage: ChatMessage = {
+          id: `msg-${Date.now()}-assistant`,
+          role: "assistant",
+          content: fullResponse,
+          status: "sent",
+          createdAt: new Date().toISOString(),
+          safetyWarning: isEmergency || isHighFever
+            ? {
+                level: isEmergency ? "blocked" : "caution",
+                message: isEmergency
+                  ? "Emergency red flag symptom detected — seek immediate medical evaluation."
+                  : "High fever (> 102°F) recorded — monitor vitals closely and consult your physician."
+              }
+            : {
+                level: "info",
+                message: "Educational fever and hydration guidance — not a substitute for clinical diagnosis."
+              },
+          sources,
+          dietOrder: feverBasket,
+          attachedReport: activeReport,
+          temperatureReading: {
+            value: tempRaw,
+            unit: "°F",
+            classification: isHighFever ? "High" : isModerateFever ? "Moderate" : "Low Grade"
+          }
+        };
+
+        conversation.messages.push(assistantMessage);
+        conversation.updatedAt = assistantMessage.createdAt;
+        delete phaseState[conversationId];
         return assistantMessage;
       }
 
@@ -266,6 +420,48 @@ export const mockAiChatAdapter: AiChatAdapter = {
     const userMessageLower = content.toLowerCase();
     const hasDiabetes = (profile.conditions || []).some((c) => c.toLowerCase().includes("diabetes"));
 
+    // Fever Inquiries (Temperature + Optional Report Upload)
+    const mentionsFever =
+      /fever|temperature|temp\b|pyrexia|chills|shivering|feverish|10[0-5](\.[0-9])?°?[fc]?/i.test(userMessageLower) ||
+      Boolean(attachedReport);
+
+    if (mentionsFever) {
+      phaseState[conversationId] = {
+        phase: "fever",
+        requiredIds: ["temperature", "feverDuration", "redFlag"],
+        answers: {},
+        uploadedReport: attachedReport
+      };
+
+      const hasReport = Boolean(attachedReport);
+      const reportNotice = hasReport
+        ? ` I have also noted your attached report ("${attachedReport?.name}").`
+        : " You can also optionally attach any recent lab report or doctor's prescription (CBC, Widal, Dengue test).";
+
+      const assistantMessage: ChatMessage = {
+        id: `msg-${Date.now()}-assistant`,
+        role: "assistant",
+        content: `I understand you are experiencing a fever. To give you personalized temperature guidance, clinical monitoring steps, and appropriate recovery meal recommendations, please share your body temperature reading, duration, and any emergency signs.${reportNotice}`,
+        status: "sent",
+        createdAt: new Date().toISOString(),
+        sources: [{ id: "src-fever-protocol", title: "Clinical Fever Assessment Protocol", type: "medical_profile" }],
+        attachedReport: attachedReport,
+        followUp: {
+          questions: [
+            QUESTION_CATALOG.temperature!,
+            QUESTION_CATALOG.feverDuration!,
+            QUESTION_CATALOG.feverSymptoms!,
+            QUESTION_CATALOG.redFlag!,
+            QUESTION_CATALOG.reportUpload!
+          ],
+          required: ["temperature", "feverDuration", "redFlag"]
+        }
+      };
+      conversation.messages.push(assistantMessage);
+      conversation.updatedAt = assistantMessage.createdAt;
+      return assistantMessage;
+    }
+
     // Diet Phase A (preference, budget, home-cooked)
     const hasDietPref = /diet|meal|food|breakfast|lunch|dinner|snack/i.test(userMessageLower);
     const hasBudget = /budget|price|cost|₹|\$|cheap|affordable/i.test(userMessageLower);
@@ -334,8 +530,8 @@ export const mockAiChatAdapter: AiChatAdapter = {
       }
     }
 
-    // Symptom Inquiries
-    const mentionsSymptom = /symptom|pain|fever|cough|headache|dizzy|nausea|fatigue|ache|vomit|sick/i.test(userMessageLower);
+    // Generic Symptom Inquiries (excluding fever)
+    const mentionsSymptom = /symptom|pain|cough|headache|dizzy|nausea|fatigue|ache|vomit|sick/i.test(userMessageLower);
     if (mentionsSymptom) {
       phaseState[conversationId] = {
         phase: "symptom",

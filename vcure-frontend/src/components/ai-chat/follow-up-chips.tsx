@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { FileText, UploadCloud, X } from "lucide-react";
 import type { FollowUpAnswer } from "@/lib/ai-chat-adapter/types";
-import type { FollowUpQuestionItem, FollowUpQuestionOption } from "@/types/ai-chat";
+import type { AttachedReport, FollowUpQuestionItem, FollowUpQuestionOption } from "@/types/ai-chat";
 
 interface FollowUpChipsProps {
   questions: (string | FollowUpQuestionItem)[];
@@ -46,6 +47,7 @@ export function FollowUpChips({
   const [values, setValues] = useState<Record<string, string>>(() =>
     initialAnswers.reduce((acc, a) => ({ ...acc, [a.question]: a.value }), {})
   );
+  const [attachedFiles, setAttachedFiles] = useState<Record<string, AttachedReport>>({});
 
   // Sync selected when questions or required change
   useEffect(() => {
@@ -94,8 +96,12 @@ export function FollowUpChips({
     if (!allRequiredAnswered) return;
 
     const answers: FollowUpAnswer[] = Array.from(selected)
-      .filter((id) => Boolean((values[id] ?? "").trim()))
-      .map((id) => ({ question: id, value: (values[id] ?? "").trim() }));
+      .filter((id) => Boolean((values[id] ?? "").trim()) || Boolean(attachedFiles[id]))
+      .map((id) => ({
+        question: id,
+        value: (values[id] ?? "").trim() || attachedFiles[id]?.name || "",
+        file: attachedFiles[id]
+      }));
 
     if (answers.length > 0) {
       onSubmit(answers);
@@ -178,55 +184,129 @@ export function FollowUpChips({
                   </p>
                 )}
 
-                {/* Pre-defined selectable option chips if available */}
-                {q.options && q.options.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {q.options.map((opt) => {
-                      const { label, value } = getOptionDetails(opt);
-                      const isOptionActive = currentValue === value;
-                      return (
+                {/* File Upload Dropzone (Optional Report File) */}
+                {q.inputType === "file" || q.id === "reportUpload" ? (() => {
+                  const fileInfo = attachedFiles[q.id];
+                  return (
+                    <div className="pt-1">
+                      {fileInfo ? (
+                        <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 shadow-2xs">
+                          <div className="flex items-center gap-2.5 truncate">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 shrink-0">
+                              <FileText className="h-4 w-4" />
+                            </div>
+                            <div className="truncate">
+                              <p className="text-xs font-bold text-emerald-950 truncate">{fileInfo.name}</p>
+                              <p className="text-[10px] text-emerald-700">
+                                {(fileInfo.size / 1024).toFixed(0)} KB • Lab Report Attached
+                              </p>
+                            </div>
+                          </div>
                         <button
-                          key={value}
                           type="button"
-                          onClick={() => handleValueChange(q.id, value)}
+                          onClick={() => {
+                            setAttachedFiles((prev) => {
+                              const next = { ...prev };
+                              delete next[q.id];
+                              return next;
+                            });
+                            handleValueChange(q.id, "");
+                          }}
                           disabled={disabled}
-                          className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
-                            isOptionActive
-                              ? "bg-emerald-600 text-white shadow-xs font-bold ring-1 ring-emerald-600"
-                              : "bg-gray-50 text-gray-700 border border-gray-200 hover:border-emerald-300 hover:bg-emerald-50"
-                          }`}
+                          className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600 transition-colors"
+                          title="Remove file"
                         >
-                          {label}
+                          <X className="h-4 w-4" />
                         </button>
-                      );
-                    })}
-                  </div>
-                )}
+                      </div>
+                    ) : (
+                      <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-emerald-200/90 bg-emerald-50/30 p-3.5 hover:border-emerald-400 hover:bg-emerald-50/60 transition-all">
+                        <UploadCloud className="h-5 w-5 text-emerald-600 mb-1" />
+                        <span className="text-xs font-semibold text-emerald-900">
+                          Upload Medical / Lab Report (Optional)
+                        </span>
+                        <span className="text-[10px] text-gray-500 mt-0.5 text-center">
+                          Attach CBC, Widal, Dengue test, or doctor prescription (PDF, JPG, PNG)
+                        </span>
+                        <input
+                          type="file"
+                          accept={q.accept || ".pdf,image/*"}
+                          disabled={disabled}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                              const fileData: AttachedReport = {
+                                name: file.name,
+                                size: file.size,
+                                type: file.type,
+                                dataUrl: reader.result as string
+                              };
+                              setAttachedFiles((prev) => ({ ...prev, [q.id]: fileData }));
+                              handleValueChange(q.id, file.name);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                    </div>
+                  );
+                })() : (
+                  <>
+                    {/* Pre-defined selectable option chips if available */}
+                    {q.options && q.options.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {q.options.map((opt) => {
+                          const { label, value } = getOptionDetails(opt);
+                          const isOptionActive = currentValue === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => handleValueChange(q.id, value)}
+                              disabled={disabled}
+                              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-all ${
+                                isOptionActive
+                                  ? "bg-emerald-600 text-white shadow-xs font-bold ring-1 ring-emerald-600"
+                                  : "bg-gray-50 text-gray-700 border border-gray-200 hover:border-emerald-300 hover:bg-emerald-50"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
 
-                {/* Direct text input with unit badge & examples */}
-                <div className="relative flex items-center pt-0.5">
-                  <input
-                    type="text"
-                    value={currentValue}
-                    onChange={(e) => handleValueChange(q.id, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && allRequiredAnswered) {
-                        e.preventDefault();
-                        handleSubmit();
-                      }
-                    }}
-                    placeholder={q.placeholder || `Enter ${q.label.toLowerCase()}...`}
-                    disabled={disabled}
-                    className={`w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-medium text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 transition-all disabled:opacity-50 ${
-                      q.unit ? "pr-16" : ""
-                    }`}
-                  />
-                  {q.unit && (
-                    <span className="pointer-events-none absolute right-2.5 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200/80 shadow-2xs">
-                      {q.unit}
-                    </span>
-                  )}
-                </div>
+                    {/* Direct text input with unit badge & examples */}
+                    <div className="relative flex items-center pt-0.5">
+                      <input
+                        type="text"
+                        value={currentValue}
+                        onChange={(e) => handleValueChange(q.id, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && allRequiredAnswered) {
+                            e.preventDefault();
+                            handleSubmit();
+                          }
+                        }}
+                        placeholder={q.placeholder || `Enter ${q.label.toLowerCase()}...`}
+                        disabled={disabled}
+                        className={`w-full rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-medium text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 transition-all disabled:opacity-50 ${
+                          q.unit ? "pr-16" : ""
+                        }`}
+                      />
+                      {q.unit && (
+                        <span className="pointer-events-none absolute right-2.5 rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-800 border border-emerald-200/80 shadow-2xs">
+                          {q.unit}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             );
           })}

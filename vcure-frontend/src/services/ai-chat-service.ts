@@ -1,5 +1,6 @@
 import { aiChatAdapter } from "@/lib/ai-chat-adapter";
 import type { FollowUpAnswer } from "@/lib/ai-chat-adapter/types";
+import type { AttachedReport } from "@/types/ai-chat";
 
 export const aiChatService = {
   getConversations: () => aiChatAdapter.getConversations(),
@@ -12,8 +13,9 @@ export const aiChatService = {
     conversationId: string,
     content: string,
     onChunk: (text: string) => void,
-    followUpAnswers?: FollowUpAnswer[]
-  ) => aiChatAdapter.sendMessage(conversationId, content, onChunk, followUpAnswers),
+    followUpAnswers?: FollowUpAnswer[],
+    attachedReport?: AttachedReport
+  ) => aiChatAdapter.sendMessage(conversationId, content, onChunk, followUpAnswers, attachedReport),
   getSuggestedQuestions: () => aiChatAdapter.getSuggestedQuestions(),
   getQuickPrompts: () => aiChatAdapter.getQuickPrompts(),
   getMedicalContext: () => aiChatAdapter.getMedicalContext(),

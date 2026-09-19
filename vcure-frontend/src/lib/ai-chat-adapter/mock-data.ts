@@ -7,12 +7,14 @@ import type {
 } from "@/types/ai-chat";
 
 export const MOCK_SUGGESTED_QUESTIONS: SuggestedQuestion[] = [
+  { id: "sq-fever", label: "Safe diet during high fever?", prompt: "What foods and fluids are safest to eat during a fever?" },
   { id: "sq1", label: "Why was this meal recommended?", prompt: "Why was today's lunch recommended for me?" },
   { id: "sq2", label: "Am I hitting my protein target?", prompt: "Am I hitting my daily protein target this week?" },
   { id: "sq3", label: "Explain my BMI trend", prompt: "Can you explain what my BMI trend means?" }
 ];
 
 export const MOCK_QUICK_PROMPTS: QuickPrompt[] = [
+  { id: "qp-fever", category: "Health", label: "Fever & Temperature Guide", prompt: "I have a fever. How do I monitor temperature and what recovery steps should I follow?" },
   { id: "qp1", category: "Nutrition", label: "Suggest a snack", prompt: "Suggest a healthy snack for right now." },
   { id: "qp2", category: "Nutrition", label: "Check an ingredient", prompt: "Is honey safe for me given my profile?" },
   { id: "qp3", category: "Health", label: "Explain a lab term", prompt: "What does HbA1c mean?" },

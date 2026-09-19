@@ -1,4 +1,5 @@
 import type {
+  AttachedReport,
   ChatMessage,
   Conversation,
   ConversationDetail,
@@ -11,6 +12,7 @@ import type {
 export interface FollowUpAnswer {
   question: string;
   value: string;
+  file?: AttachedReport;
 }
 
 export interface AiChatAdapter {
@@ -29,7 +31,8 @@ export interface AiChatAdapter {
     conversationId: string,
     content: string,
     onChunk: (partialText: string) => void,
-    followUpAnswers?: FollowUpAnswer[]
+    followUpAnswers?: FollowUpAnswer[],
+    attachedReport?: AttachedReport
   ): Promise<ChatMessage>;
   getSuggestedQuestions(): Promise<SuggestedQuestion[]>;
   getQuickPrompts(): Promise<QuickPrompt[]>;

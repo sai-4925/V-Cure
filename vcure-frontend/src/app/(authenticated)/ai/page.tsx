@@ -28,8 +28,10 @@ import { QuickPrompts } from "@/components/ai-chat/quick-prompts";
 import { MedicalContextPanel } from "@/components/ai-chat/medical-context-panel";
 import { NutritionContextPanel } from "@/components/ai-chat/nutrition-context-panel";
 import type { FollowUpAnswer } from "@/lib/ai-chat-adapter/types";
+import type { AttachedReport } from "@/types/ai-chat";
 
 const SUGGESTED_PROMPTS_EN = [
+  "I have a fever, what should I do?",
   "Best breakfast for diabetes?",
   "Healthy snack under ₹50",
   "Can I eat mango with PCOS?",
@@ -38,6 +40,7 @@ const SUGGESTED_PROMPTS_EN = [
 ];
 
 const SUGGESTED_PROMPTS_TE = [
+  "నాకు జ్వరం ఉంది, నేను ఏమి చేయాలి?",
   "డయాబెటిస్ బాధితులకు ఉత్తమ అల్పాహారం ఏది?",
   "₹50 లోపు ఆరోగ్యకరమైన స్నాక్",
   "తాగవలసిన నీటి పరిమాణం ఎంత?",
@@ -73,8 +76,12 @@ export default function CoachPage() {
 
   const suggestedPrompts = isTelugu ? SUGGESTED_PROMPTS_TE : SUGGESTED_PROMPTS_EN;
 
-  const handleSendPrompt = async (text: string, followUpAnswers?: FollowUpAnswer[]) => {
-    if (!text.trim() && (!followUpAnswers || followUpAnswers.length === 0)) return;
+  const handleSendPrompt = async (
+    text: string,
+    followUpAnswers?: FollowUpAnswer[],
+    attachedReport?: AttachedReport
+  ) => {
+    if (!text.trim() && (!followUpAnswers || followUpAnswers.length === 0) && !attachedReport) return;
 
     let targetConvId = activeConversationId;
     if (!targetConvId) {
@@ -83,12 +90,13 @@ export default function CoachPage() {
       setActiveConversationId(newConv.id);
     }
 
-    sendMessageMutation.mutate({ content: text, followUpAnswers });
+    sendMessageMutation.mutate({ content: text, followUpAnswers, attachedReport });
   };
 
   const handleFollowUpSubmit = (answers: FollowUpAnswer[]) => {
+    const reportAnswer = answers.find((a) => a.file);
     const summary = answers.map((a) => `${a.question}: ${a.value}`).join(", ");
-    handleSendPrompt(summary, answers);
+    handleSendPrompt(summary, answers, reportAnswer?.file);
   };
 
   const handleRetry = () => {
@@ -285,7 +293,7 @@ export default function CoachPage() {
             <SuggestedQuestions onSelect={(prompt) => handleSendPrompt(prompt)} />
           )}
           <ChatInput
-            onSend={(content) => handleSendPrompt(content)}
+            onSend={(content, attachedReport) => handleSendPrompt(content, undefined, attachedReport)}
             disabled={isStreaming || sendMessageMutation.isPending}
           />
         </Container>

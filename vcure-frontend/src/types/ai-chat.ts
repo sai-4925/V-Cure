@@ -15,6 +15,20 @@ export interface SourceReference {
   type: "article" | "medical_profile" | "meal_plan";
 }
 
+export interface AttachedReport {
+  name: string;
+  size: number;
+  type: string;
+  url?: string;
+  dataUrl?: string;
+}
+
+export interface TemperatureReading {
+  value: string;
+  unit?: string;
+  classification?: "Normal" | "Low Grade" | "Moderate" | "High";
+}
+
 export interface FollowUpQuestionOption {
   label: string;
   value: string;
@@ -27,6 +41,8 @@ export interface FollowUpQuestionItem {
   options?: (string | FollowUpQuestionOption)[];
   unit?: string;
   placeholder?: string;
+  inputType?: "text" | "number" | "file";
+  accept?: string;
 }
 
 export interface FollowUpQuestionConfig {
@@ -63,6 +79,8 @@ export interface ChatMessage {
   sources?: SourceReference[];
   followUp?: FollowUpQuestionConfig;
   dietOrder?: DietOrderRecommendation;
+  attachedReport?: AttachedReport;
+  temperatureReading?: TemperatureReading;
 }
 
 export interface Conversation {

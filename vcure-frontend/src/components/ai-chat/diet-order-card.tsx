@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   ShoppingBag,
@@ -24,9 +25,15 @@ interface DietOrderCardProps {
 
 export function DietOrderCard({ dietOrder }: DietOrderCardProps) {
   const addItemsToCart = useShoppingCartStore((state) => state.addItems);
+  const [mounted, setMounted] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(
     () => new Set(dietOrder.items.map((item) => item.id))
   );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isPlacingOrder, setIsPlacingOrder] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
@@ -232,17 +239,17 @@ export function DietOrderCard({ dietOrder }: DietOrderCardProps) {
         </div>
       )}
 
-      {/* Direct Order Modal */}
-      {isCheckoutOpen && (
+      {/* Direct Order Modal (Portaled to document.body to prevent overlap with bottom nav bar) */}
+      {isCheckoutOpen && mounted && typeof document !== "undefined" && createPortal(
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4 backdrop-blur-xs transition-all"
+          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/65 p-0 sm:p-4 backdrop-blur-xs transition-all animate-in fade-in duration-200"
           role="dialog"
           aria-modal="true"
           onClick={(e) => {
             if (e.target === e.currentTarget) setIsCheckoutOpen(false);
           }}
         >
-          <div className="w-full max-w-md max-h-[90dvh] sm:max-h-[85vh] rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl animate-in slide-in-from-bottom-5 flex flex-col overflow-hidden">
+          <div className="w-full max-w-md max-h-[85dvh] sm:max-h-[85vh] rounded-t-3xl sm:rounded-3xl bg-white shadow-2xl animate-in slide-in-from-bottom-5 duration-200 flex flex-col overflow-hidden">
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-gray-100 px-5 pt-4 pb-3 shrink-0">
               <div className="flex items-center gap-2">
@@ -341,13 +348,13 @@ export function DietOrderCard({ dietOrder }: DietOrderCardProps) {
               </div>
             </div>
 
-            {/* Modal Actions - Pinned Sticky at the Bottom */}
-            <div className="shrink-0 border-t border-gray-100 bg-white px-5 py-3.5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] flex gap-2">
+            {/* Modal Actions - Pinned Sticky at the Bottom with Safe Area Clearance */}
+            <div className="shrink-0 border-t border-gray-100 bg-white px-5 py-3.5 pb-[max(1.75rem,calc(1.25rem+env(safe-area-inset-bottom,0px)))] flex gap-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
               <button
                 type="button"
                 onClick={() => setIsCheckoutOpen(false)}
                 disabled={isPlacingOrder}
-                className="flex-1 rounded-xl border border-gray-200 py-2.5 px-4 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50"
+                className="flex-1 rounded-xl border border-gray-200 py-3 px-4 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-all disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -355,20 +362,21 @@ export function DietOrderCard({ dietOrder }: DietOrderCardProps) {
                 type="button"
                 onClick={handleConfirmOrder}
                 disabled={isPlacingOrder || selectedItems.length === 0}
-                className="flex-2 rounded-xl bg-emerald-600 py-2.5 px-4 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-2 rounded-xl bg-emerald-600 py-3 px-4 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isPlacingOrder ? (
                   <span>Placing Order...</span>
                 ) : (
                   <>
-                    <ShoppingBag className="h-3.5 w-3.5" />
+                    <ShoppingBag className="h-4 w-4" />
                     Confirm & Place Order (₹{currentTotal})
                   </>
                 )}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import {
   buildMockResponse
 } from "@/lib/ai-chat-adapter/mock-data";
 import { sanitizeDietOrder } from "@/lib/ai-chat-adapter/allergen-safety";
+import { streamGroqResponse } from "@/lib/ai-chat-adapter/groq-client";
 import type {
   AttachedReport,
   ChatMessage,
@@ -530,8 +531,15 @@ export const mockAiChatAdapter: AiChatAdapter = {
       }
     }
 
-    // Generic Symptom Inquiries (excluding fever)
-    const mentionsSymptom = /symptom|pain|cough|headache|dizzy|nausea|fatigue|ache|vomit|sick/i.test(userMessageLower);
+    // Specific Acute Personal Symptom Inquiries (excluding fever)
+    const isPersonalSymptomReport =
+      /(?:i have|i'm having|i am having|i feel|feeling|suffering from|experiencing|my\s+(?:head|stomach|chest|body|back|leg|throat)\s+(?:hurts|aches))\b/i.test(userMessageLower) &&
+      /symptom|pain|cough|headache|dizzy|nausea|fatigue|ache|vomit|sick/i.test(userMessageLower);
+
+    const isExplicitSymptomComplaint =
+      /^(?:i am sick|i'm sick|feeling sick|severe pain|bad headache|dizziness and nausea|chest pain)\b/i.test(userMessageLower.trim());
+
+    const mentionsSymptom = isPersonalSymptomReport || isExplicitSymptomComplaint;
     if (mentionsSymptom) {
       phaseState[conversationId] = {
         phase: "symptom",
@@ -559,31 +567,106 @@ export const mockAiChatAdapter: AiChatAdapter = {
       return assistantMessage;
     }
 
-    // Default conversational response with streaming simulation
-    const { text, safetyWarning } = buildMockResponse(content, profile);
-    const words = text.split(" ");
-    let accumulated = "";
+    // Hybrid Routing: Use mock response for predefined clinical questions, Groq AI for open-ended/general queries
+    const mockResult = buildMockResponse(content, profile);
 
-    for (const word of words) {
-      accumulated += (accumulated ? " " : "") + word;
-      onChunk(accumulated);
-      // eslint-disable-next-line no-await-in-loop
-      await delay(undefined, STREAM_CHUNK_DELAY_MS);
+    if (mockResult.handled) {
+      const words = mockResult.text.split(" ");
+      let accumulated = "";
+
+      for (const word of words) {
+        accumulated += (accumulated ? " " : "") + word;
+        onChunk(accumulated);
+        // eslint-disable-next-line no-await-in-loop
+        await delay(undefined, STREAM_CHUNK_DELAY_MS);
+      }
+
+      const assistantMessage: ChatMessage = {
+        id: `msg-${Date.now()}-assistant`,
+        role: "assistant",
+        content: mockResult.text,
+        status: "sent",
+        createdAt: new Date().toISOString(),
+        safetyWarning: mockResult.safetyWarning,
+        sources: mockResult.sources || (
+          /quinoa|lunch|meal|breakfast|dinner|snack/i.test(content)
+            ? [{ id: "src-meal", title: "Your active meal plan", type: "meal_plan" }]
+            : undefined
+        ),
+        dietOrder:
+          /diet|food|meal|breakfast|lunch|dinner|snack|protein|recipe|nutrition/i.test(content)
+            ? sanitizeDietOrder({
+                id: `diet-order-${Date.now()}`,
+                title: "Recommended Diet & Meal Ingredients",
+                description: "Fresh, nutrient-dense ingredients recommended for your daily diet",
+                items: [
+                  { id: "item-quinoa", name: "Organic White Quinoa", quantity: "500g", estimatedPriceInr: 220, category: "Grains" },
+                  { id: "item-yogurt", name: "High-Protein Greek Yogurt", quantity: "400g", estimatedPriceInr: 120, category: "Dairy" },
+                  { id: "item-seeds", name: "Raw Chia & Flax Seed Mix", quantity: "200g", estimatedPriceInr: 150, category: "Pantry" },
+                  { id: "item-berries", name: "Fresh Blueberries Pack", quantity: "125g", estimatedPriceInr: 180, category: "Produce" }
+                ],
+                totalPriceInr: 670
+              }, profile.allergies || [])
+            : undefined
+      };
+      conversation.messages.push(assistantMessage);
+      conversation.lastMessagePreview = mockResult.text.slice(0, 80);
+      conversation.updatedAt = assistantMessage.createdAt;
+
+      return assistantMessage;
+    }
+
+    // Unhandled / Open-ended / General queries: Invoke Groq AI API with streaming
+    const groqHistory = conversation.messages.slice(-6).map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content
+    }));
+
+    const groqResult = await streamGroqResponse(
+      groqHistory,
+      {
+        conditions: profile.conditions,
+        allergies: profile.allergies,
+        medications: profile.medications
+      },
+      (accumulated) => {
+        onChunk(accumulated);
+      }
+    );
+
+    let finalContent = groqResult.text;
+    let sources: SourceReference[] = [
+      { id: "src-groq-ai", title: "V-Cure Clinical AI Intelligence (Groq)", type: "medical_profile" }
+    ];
+
+    if (!groqResult.success || !finalContent) {
+      // Fallback cleanly if Groq upstream service encounters an issue
+      console.warn("[ai-chat] Groq failed, falling back to mock:", groqResult.error);
+      finalContent = mockResult.text;
+      sources = [
+        { id: "src-fallback", title: "V-Cure Clinical Guidelines", type: "medical_profile" }
+      ];
+
+      const words = finalContent.split(" ");
+      let accumulated = "";
+      for (const word of words) {
+        accumulated += (accumulated ? " " : "") + word;
+        onChunk(accumulated);
+        // eslint-disable-next-line no-await-in-loop
+        await delay(undefined, STREAM_CHUNK_DELAY_MS);
+      }
     }
 
     const assistantMessage: ChatMessage = {
       id: `msg-${Date.now()}-assistant`,
       role: "assistant",
-      content: text,
+      content: finalContent,
       status: "sent",
       createdAt: new Date().toISOString(),
-      safetyWarning,
-      sources:
-        /quinoa|lunch|meal|breakfast|dinner|snack/i.test(content)
-          ? [{ id: "src-meal", title: "Your active meal plan", type: "meal_plan" }]
-          : undefined,
+      safetyWarning: mockResult.safetyWarning,
+      sources,
       dietOrder:
-        /diet|food|meal|breakfast|lunch|dinner|snack|protein|recipe|nutrition/i.test(content)
+        /diet|food|meal|breakfast|lunch|dinner|snack|protein|recipe|nutrition/i.test(finalContent)
           ? sanitizeDietOrder({
               id: `diet-order-${Date.now()}`,
               title: "Recommended Diet & Meal Ingredients",
@@ -598,8 +681,9 @@ export const mockAiChatAdapter: AiChatAdapter = {
             }, profile.allergies || [])
           : undefined
     };
+
     conversation.messages.push(assistantMessage);
-    conversation.lastMessagePreview = text.slice(0, 80);
+    conversation.lastMessagePreview = finalContent.slice(0, 80);
     conversation.updatedAt = assistantMessage.createdAt;
 
     return assistantMessage;

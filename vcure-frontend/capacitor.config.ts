@@ -15,7 +15,7 @@ const config: CapacitorConfig = {
   webDir: 'out',
   server: {
     url: process.env.CAPACITOR_SERVER_URL || 'https://v-cure.vercel.app',
-    cleartext: false
+    cleartext: true
   },
   plugins: {
     SplashScreen: {

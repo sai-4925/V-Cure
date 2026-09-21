@@ -3,7 +3,9 @@ import type {
   MedicalContextSnapshot,
   NutritionContextSnapshot,
   QuickPrompt,
-  SuggestedQuestion
+  SuggestedQuestion,
+  SourceReference,
+  SafetyWarning
 } from "@/types/ai-chat";
 
 export const MOCK_SUGGESTED_QUESTIONS: SuggestedQuestion[] = [
@@ -119,10 +121,17 @@ import {
   ALLERGEN_CATALOG
 } from "./allergen-safety";
 
+export interface MockResponseResult {
+  handled: boolean;
+  text: string;
+  safetyWarning?: SafetyWarning;
+  sources?: SourceReference[];
+}
+
 export function buildMockResponse(
   userMessage: string,
   medicalContext: MedicalContextSnapshot
-): { text: string; safetyWarning?: { level: "caution" | "blocked"; message: string } } {
+): MockResponseResult {
   const allergenMatches = findContainedAllergens(userMessage, medicalContext.allergies);
   const firstMatch = allergenMatches[0];
 
@@ -133,17 +142,21 @@ export function buildMockResponse(
     const alternatives = def?.safeAlternatives?.join(", ") || "safe allergen-free options";
 
     return {
+      handled: true,
       text: `⚠️ Medical Profile Allergy Alert: You have a registered allergy to **${allergen}**. Consuming items containing "${matchedAlias}" could trigger an adverse reaction, so I have strictly excluded it from your recommendations. Instead, I recommend safe alternatives such as ${alternatives}. Would you like an itemized allergen-safe meal basket?`,
       safetyWarning: {
         level: "caution",
         message: `Allergy Alert: "${matchedAlias}" conflicts with your registered ${allergen} allergy.`
-      }
+      },
+      sources: [{ id: "src-allergy", title: "Patient Allergy Profile Safety Filter", type: "medical_profile" }]
     };
   }
 
   if (/hba1c|blood sugar|glucose/i.test(userMessage)) {
     return {
-      text: "HbA1c reflects your average blood sugar over roughly the past 2-3 months, unlike a fasting glucose reading which only captures a single moment. It's one of the main markers used to monitor diabetes management over time — worth discussing trends with your doctor rather than a single reading in isolation."
+      handled: true,
+      text: "HbA1c reflects your average blood sugar over roughly the past 2-3 months, unlike a fasting glucose reading which only captures a single moment. It's one of the main markers used to monitor diabetes management over time — worth discussing trends with your doctor rather than a single reading in isolation.",
+      sources: [{ id: "src-diabetes-edu", title: "Clinical Glycemic Education", type: "medical_profile" }]
     };
   }
 
@@ -156,7 +169,59 @@ export function buildMockResponse(
       ? "roasted chickpeas or a chia seed pudding"
       : "Greek yogurt or roasted chickpeas";
     return {
-      text: `Based on your recent logs, you're averaging close to your protein target most days this week. Adding an allergen-safe, protein-forward snack like ${proteinSnack} will help close the gap without conflicting with your medical profile.`
+      handled: true,
+      text: `Based on your recent logs, you're averaging close to your protein target most days this week. Adding an allergen-safe, protein-forward snack like ${proteinSnack} will help close the gap without conflicting with your medical profile.`,
+      sources: [{ id: "src-protein", title: "Personalized Protein Target", type: "meal_plan" }]
+    };
+  }
+
+  if (/quinoa|why.*lunch|why was.*meal recommended/i.test(userMessage)) {
+    return {
+      handled: true,
+      text: "It's a good fit because it's high in fiber and plant-based protein, which lines up with your current goal and doesn't conflict with anything in your medical profile. It also stays within your calorie target for lunch.",
+      sources: [{ id: "src1", title: "Vegetable Quinoa Power Bowl", type: "meal_plan" }]
+    };
+  }
+
+  if (/bmi|body mass index/i.test(userMessage)) {
+    return {
+      handled: true,
+      text: "Your BMI trend over the past 3 months shows gradual, healthy stabilization. In conjunction with your daily step count and nutrition logs, this suggests you are building metabolic consistency rather than experiencing sharp fluctuations.",
+      sources: [{ id: "src-vitals", title: "Anthropometric Trends", type: "medical_profile" }]
+    };
+  }
+
+  if (/\bhoney\b/i.test(userMessage)) {
+    return {
+      handled: true,
+      text: "Because diabetes is documented in your medical profile, honey should be consumed with mindful moderation. While honey contains trace antioxidants, it is composed of approximately 80% sugars (fructose and glucose) and causes blood glucose spikes similar to table sugar. If used, limit portion sizes to under half a teaspoon and pair with protein or healthy fats.",
+      sources: [{ id: "src-honey", title: "Glycemic Impact Guide", type: "medical_profile" }]
+    };
+  }
+
+  if (/\bsleep\b/i.test(userMessage)) {
+    return {
+      handled: true,
+      text: "To improve sleep consistency and support circadian rhythm: 1) Discontinue screen usage 45 minutes before sleep; 2) Maintain a cool bedroom temperature (around 18-20°C); 3) Limit caffeine consumption past 2 PM; 4) Keep a consistent wake-up time even on weekends. Restorative sleep is directly correlated with glycemic control.",
+      sources: [{ id: "src-sleep", title: "Sleep Hygiene Guidelines", type: "medical_profile" }]
+    };
+  }
+
+  if (/\bsnack\b/i.test(userMessage)) {
+    const isNutAllergic = (medicalContext.allergies || []).some((a) =>
+      /nut|peanut|almond|cashew/i.test(a)
+    );
+    const snackOptions = [
+      "cucumber and carrot sticks with olive-oil hummus",
+      "roasted spiced chickpeas (makhana / chana)",
+      isDairyAllergic ? "chia seed pudding with unsweetened almond milk" : "plain Greek yogurt with blueberries",
+      !isNutAllergic ? "a small handful of raw walnuts or almonds" : "roasted pumpkin and sunflower seeds"
+    ].filter(Boolean).join(", ");
+
+    return {
+      handled: true,
+      text: `Here are healthy, blood-sugar stabilizing snack ideas tailored to your profile: ${snackOptions}. All options avoid rapid glucose surges and respect your dietary requirements.`,
+      sources: [{ id: "src-snack", title: "Personalized Snack Guide", type: "meal_plan" }]
     };
   }
 
@@ -166,7 +231,9 @@ export function buildMockResponse(
       : "";
 
   return {
+    handled: false,
     text: `Here's what I can tell you based on your profile and recent activity: your plan currently prioritizes steady blood sugar and adequate protein, and nothing in today's log conflicts with your medical profile.${safeAllergyNotice} Let me know if you want me to customize a safe meal basket for you.`
   };
 }
+
 
